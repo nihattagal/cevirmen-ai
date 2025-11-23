@@ -3,7 +3,9 @@ from groq import Groq
 from audio_recorder_streamlit import audio_recorder
 from gtts import gTTS
 import io
-import random  # Resimler her seferinde farklı olsun diye ekledik
+import random
+import time # Zaman damgası için (Önbelleği kırmak adına)
+import urllib.parse # Linkleri düzeltmek için (boşlukları %20 yapar)
 
 st.set_page_config(page_title="AI Çevirmen", layout="centered")
 
@@ -33,12 +35,13 @@ with st.sidebar:
     lang_codes = {"İngilizce": "en", "Türkçe": "tr", "Almanca": "de", "İspanyolca": "es", "Fransızca": "fr"}
     target_lang_code = lang_codes[target_lang_name]
 
-    if st.button("🗑️ Temizle"):
+    if st.button("🗑️ Sohbeti ve Önbelleği Temizle"):
         st.session_state.chat_history = []
+        st.cache_data.clear() # Derin temizlik
         st.rerun()
 
 # --- MİKROFON ---
-st.write("Mikrofona basıp konuşun (Örn: 'Mavi bir gömlek istiyorum'):")
+st.write("Mikrofona basıp konuşun (Örn: 'Deniz kenarında taş bir ev'):")
 audio_bytes = audio_recorder(
     text="",
     recording_color="#e8b62c",
@@ -70,9 +73,11 @@ if audio_bytes:
             
             GÖREVİN:
             1. Metni hedef dile çevir.
-            2. Metin içindeki ana nesneyi SIFATLARIYLA (Renk, Boyut, Şekil) BERABER İngilizce olarak ayıkla.
+            2. Metin içindeki ana nesneyi SIFATLARIYLA (Renk, Boyut, Şekil, Ortam) BERABER İngilizce olarak ayıkla.
             
-            ÖNEMLİ: Sadece 'car' deme, 'red sports car' de. Sadece 'cat' deme, 'cute white cat' de.
+            ÖNEMLİ: 
+            - 'Mavi gömlek' denirse 'blue shirt' yaz.
+            - 'Deniz kenarı' denirse 'seaside beach ocean' yaz.
             
             CEVAP FORMATI (Buna uy):
             Çevrilmiş Metin ||| Görsel_Tanımı_Ingilizce
@@ -94,9 +99,17 @@ if audio_bytes:
                 translation = parts[0].strip()
                 image_keyword = parts[1].strip()
                 
-                # Görsel URL (Seed ekledik ki her resim benzersiz olsun)
-                seed = random.randint(0, 100000)
-                image_url = f"https://image.pollinations.ai/prompt/{image_keyword}?nologo=true&seed={seed}"
+                # --- URL OLUŞTURMA (ÖNEMLİ DÜZELTME) ---
+                # 1. Kelimedeki boşlukları %20 yap (blue shirt -> blue%20shirt)
+                safe_keyword = urllib.parse.quote(image_keyword)
+                
+                # 2. Rastgele sayı (Seed)
+                seed = random.randint(0, 999999)
+                
+                # 3. Zaman damgası (Tarayıcıyı kandırmak için)
+                timestamp = int(time.time())
+                
+                image_url = f"https://image.pollinations.ai/prompt/{safe_keyword}?nologo=true&seed={seed}&v={timestamp}"
             else:
                 translation = full_response
                 image_url = None
@@ -132,5 +145,5 @@ for chat in reversed(st.session_state.chat_history):
         
         with col2:
             if chat['image'] and show_images:
-                # Resmi biraz daha büyük ve düzgün göster
-                st.image(chat['image'], caption=chat['keyword'], use_container_width=True)
+                # Resmi göster
+                st.image(chat['image'], caption=f"AI Gözüyle: {chat['keyword']}", use_container_width=True)
