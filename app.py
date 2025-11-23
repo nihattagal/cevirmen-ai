@@ -59,7 +59,7 @@ def get_analysis(text, target_lang):
     res = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}])
     return res.choices[0].message.content
 
-# --- GÖRSEL ANALİZ (AKILLI DENEME MEKANİZMASI) ---
+# GÖRSEL ANALİZ (AKILLI MODEL SEÇİCİ)
 def analyze_image(image_bytes, target_lang):
     base64_image = base64.b64encode(image_bytes).decode('utf-8')
     prompt = f"""
@@ -69,10 +69,12 @@ def analyze_image(image_bytes, target_lang):
     2. Eğer görselde NESNE varsa: Ne olduğunu {target_lang} dilinde anlat.
     """
     
-    # Denenecek Modeller Listesi (Sırayla dener)
+    # Denenecek Modeller Listesi (Sırayla dener, çalışan ilkini kullanır)
     models_to_try = [
-        "llama-3.2-90b-vision-preview", # 1. Tercih: En güçlüsü
-        "llama-3.2-11b-vision-preview", # 2. Tercih: Hızlı olan
+        "llama-3.2-11b-vision-instruct", # En güncel kararlı sürüm
+        "llama-3.2-90b-vision-instruct", # Büyük model (Varsa)
+        "llama-3.2-11b-vision-preview",  # Eski (Yedek)
+        "llama-3.2-90b-vision-preview"   # Eski Büyük (Yedek)
     ]
     
     last_error = ""
@@ -95,12 +97,10 @@ def analyze_image(image_bytes, target_lang):
             )
             return res.choices[0].message.content
         except Exception as e:
-            # Eğer bu model hata verirse, hatayı kaydet ve döngüdeki bir sonraki modele geç
             last_error = str(e)
-            continue
+            continue # Hata verirse bir sonraki modeli dene
             
-    # Eğer döngü biter ve hiçbiri çalışmazsa:
-    return f"Görsel modelleri şu an yanıt vermiyor. Hata detayı: {last_error}"
+    return f"Görsel analiz yapılamadı. Tüm modeller meşgul veya devre dışı. Hata: {last_error}"
 
 def create_voice(text, lang_code):
     try:
@@ -287,8 +287,7 @@ def show_vision():
             with st.spinner("Görsel analiz ediliyor..."):
                 result = analyze_image(final_pic.getvalue(), target_lang)
                 
-                # Eğer hata mesajı döndüyse kırmızı, dönmediyse yeşil göster
-                if "Hata:" in result or "Görsel modelleri" in result:
+                if "Hata" in result or "Görsel analiz yapılamadı" in result:
                     st.error(result)
                 else:
                     st.success("✅ Sonuç:")
