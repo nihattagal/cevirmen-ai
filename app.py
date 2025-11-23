@@ -47,7 +47,6 @@ except:
 def get_translation(text, target_lang, tone, style_prompt=""):
     system_prompt = f"Sen tercümansın. Hedef: {target_lang}. Ton: {tone}. {style_prompt}. Sadece çeviriyi ver."
     try:
-        # Metin Modeli (En kararlısı)
         res = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": text}]
@@ -60,7 +59,7 @@ def get_analysis(text, target_lang):
     res = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}])
     return res.choices[0].message.content
 
-# GÖRSEL ANALİZ (GÜNCELLENEN MODEL)
+# --- GÖRSEL ANALİZ (AKILLI DENEME MEKANİZMASI) ---
 def analyze_image(image_bytes, target_lang):
     base64_image = base64.b64encode(image_bytes).decode('utf-8')
     prompt = f"""
@@ -69,32 +68,39 @@ def analyze_image(image_bytes, target_lang):
     1. Eğer görselde YAZI varsa: O yazıyı {target_lang} diline çevir.
     2. Eğer görselde NESNE varsa: Ne olduğunu {target_lang} dilinde anlat.
     """
-    try:
-        res = client.chat.completions.create(
-            model="llama-3.2-11b-vision-instruct", # <-- GÜNCEL VE KARARLI GÖRSEL MODELİ
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                    ]
-                }
-            ],
-            temperature=0.5,
-            max_tokens=1024,
-        )
-        return res.choices[0].message.content
-    except Exception as e:
-        # Eğer 11b de hata verirse 90b-instruct deneyelim (Yedek plan)
+    
+    # Denenecek Modeller Listesi (Sırayla dener)
+    models_to_try = [
+        "llama-3.2-90b-vision-preview", # 1. Tercih: En güçlüsü
+        "llama-3.2-11b-vision-preview", # 2. Tercih: Hızlı olan
+    ]
+    
+    last_error = ""
+    
+    for model_name in models_to_try:
         try:
             res = client.chat.completions.create(
-                model="llama-3.2-90b-vision-instruct",
-                messages=[{"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}]}]
+                model=model_name,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                        ]
+                    }
+                ],
+                temperature=0.5,
+                max_tokens=1024,
             )
             return res.choices[0].message.content
-        except Exception as e2:
-             return f"Görsel analiz hatası: {str(e2)}"
+        except Exception as e:
+            # Eğer bu model hata verirse, hatayı kaydet ve döngüdeki bir sonraki modele geç
+            last_error = str(e)
+            continue
+            
+    # Eğer döngü biter ve hiçbiri çalışmazsa:
+    return f"Görsel modelleri şu an yanıt vermiyor. Hata detayı: {last_error}"
 
 def create_voice(text, lang_code):
     try:
@@ -280,10 +286,15 @@ def show_vision():
         if st.button("🖼️ Çevir", type="primary"):
             with st.spinner("Görsel analiz ediliyor..."):
                 result = analyze_image(final_pic.getvalue(), target_lang)
-                st.success("✅ Sonuç:")
-                st.markdown(f"<div style='background-color:#f9fbe7; padding:20px; border-radius:10px;'>{result}</div>", unsafe_allow_html=True)
-                audio = create_voice(result[:200], "tr")
-                if audio: st.audio(audio, format="audio/mp3")
+                
+                # Eğer hata mesajı döndüyse kırmızı, dönmediyse yeşil göster
+                if "Hata:" in result or "Görsel modelleri" in result:
+                    st.error(result)
+                else:
+                    st.success("✅ Sonuç:")
+                    st.markdown(f"<div style='background-color:#f9fbe7; padding:20px; border-radius:10px;'>{result}</div>", unsafe_allow_html=True)
+                    audio = create_voice(result[:200], "tr")
+                    if audio: st.audio(audio, format="audio/mp3")
 
 # --- ROUTER ---
 if st.session_state.page == "home": show_home()
