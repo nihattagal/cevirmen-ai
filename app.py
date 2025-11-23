@@ -1,6 +1,6 @@
 import streamlit as st
 from groq import Groq
-from audio_recorder_streamlit import audio_recorder # <-- YENİSİ BU OLMALI
+from audio_recorder_streamlit import audio_recorder
 import io
 
 st.set_page_config(page_title="AI Çevirmen", layout="centered")
@@ -26,7 +26,7 @@ except:
 
 st.write("Mikrofon butonuna basarak konuşun (Kayıt başlar), tekrar basarak durdurun (Çeviri yapar):")
 
-# --- YENİ KAYDEDİCİ ---
+# Ses Kaydedici
 audio_bytes = audio_recorder(
     text="",
     recording_color="#e8b62c",
@@ -54,11 +54,12 @@ if audio_bytes:
             
             st.success(f"Algılanan: {transcription}")
             
-            # Llama 3 (Çeviri Yap)
+            # --- GÜNCELLENEN KISIM BURASI ---
+            # Llama 3.3 (Yeni Model)
             system_prompt = f"Sen çevirmensin. Mod: {user_mode}. Hedef: {target_lang}. Sadece çeviriyi yaz."
             
             completion = client.chat.completions.create(
-                model="llama3-8b-8192",
+                model="llama-3.3-70b-versatile", # <-- İSMİ GÜNCELLEDİK
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": transcription}
