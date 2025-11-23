@@ -6,11 +6,12 @@ import io
 import requests
 from bs4 import BeautifulSoup
 import PyPDF2
+import datetime
 
 # --- 1. GENEL AYARLAR ---
 st.set_page_config(page_title="AI Tercüman Pro", page_icon="🌐", layout="wide")
 
-# CSS TASARIM (KARTLAR VE RENKLER)
+# CSS TASARIM
 st.markdown("""
     <style>
     .main-header { font-size: 2.5rem; font-weight: 800; color: #333; text-align: center; margin-bottom: 30px; }
@@ -32,6 +33,7 @@ st.markdown("""
     .chat-row { padding: 15px; border-radius: 10px; margin-bottom: 8px; }
     .source-box { background: #e3f2fd; border-left: 5px solid #2196F3; }
     .target-box { background: #fbe9e7; border-right: 5px solid #FF5722; text-align: right; }
+    .info-box { background: #e8f5e9; padding: 15px; border-radius: 10px; border: 1px solid #c8e6c9; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -47,9 +49,8 @@ except:
     st.error("API Key eksik! Lütfen Secrets ayarlarını yapın.")
     st.stop()
 
-# --- YEREL FONKSİYONLAR (SENİN KAYNAKLARIN) ---
+# --- FONKSİYONLAR ---
 def local_read_pdf(file):
-    """PDF dosyasını yerel işlemciyle okur"""
     reader = PyPDF2.PdfReader(file)
     text = ""
     for page in reader.pages:
@@ -57,25 +58,19 @@ def local_read_pdf(file):
     return text
 
 def local_read_web(url):
-    """Web sitesini yerel işlemciyle okur"""
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
         page = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(page.content, 'html.parser')
-        # Sadece metinleri al
         return " ".join([p.get_text() for p in soup.find_all(['p', 'h1', 'h2'])])
     except Exception as e:
         return None
 
-# --- AI FONKSİYONLARI (SADECE BEYİN) ---
 def get_translation(text, target_lang, tone, style_prompt=""):
     system_prompt = f"""
     Sen profesyonel bir tercümansın.
     GÖREVİN: Verilen metni {target_lang} diline çevirmek.
-    KURALLAR:
-    1. Ton: {tone}.
-    2. {style_prompt}
-    3. Sadece çeviriyi ver. Yorum yapma.
+    KURALLAR: 1. Ton: {tone}. 2. {style_prompt} 3. Sadece çeviriyi ver.
     """
     try:
         res = client.chat.completions.create(
@@ -86,7 +81,7 @@ def get_translation(text, target_lang, tone, style_prompt=""):
     except Exception as e: return f"Hata: {e}"
 
 def get_analysis(text, target_lang):
-    prompt = f"Sen bir asistansın. Metni analiz et. Rapor Dili: {target_lang}. ÇIKTI: 1.Özet 2.Ana Fikirler 3.Görevler\nMetin: {text[:15000]}" # Token limiti için kırpma
+    prompt = f"Sen bir asistansın. Metni analiz et. Rapor Dili: {target_lang}. ÇIKTI: 1.Özet 2.Ana Fikirler 3.Görevler\nMetin: {text[:15000]}"
     res = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}])
     return res.choices[0].message.content
 
@@ -111,8 +106,6 @@ def show_home():
             
     st.markdown('<div class="main-header">🌐 AI Tercüman Pro</div>', unsafe_allow_html=True)
     
-    # 5 KARTLI MENÜ
-    # İlk satır 3 kart
     c1, c2, c3 = st.columns(3)
     
     if st.session_state.app_lang == "Türkçe":
@@ -127,7 +120,6 @@ def show_home():
     with c3: 
         if st.button(titles[2], use_container_width=True): st.session_state.page = "file"; st.rerun()
     
-    # İkinci satır 2 kart (Ortalanmış)
     c_empty, c4, c5, c_empty2 = st.columns([0.5, 1, 1, 0.5])
     with c4: 
         if st.button(titles[3], use_container_width=True): st.session_state.page = "web"; st.rerun()
@@ -142,6 +134,14 @@ def show_chat():
         my_lang = st.selectbox("Benim Dilim", ["Türkçe", "English", "Deutsch"])
         target_lang = st.selectbox("Karşı Taraf", ["English", "Türkçe", "Deutsch", "Français", "Español", "Russian", "Arabic", "Chinese"], index=0)
         tone = st.select_slider("Ton", ["Resmi", "Normal", "Samimi"], value="Normal")
+        
+        st.divider()
+        
+        # SOHBETİ İNDİR BUTONU
+        if st.session_state.chat_history:
+            chat_log = "\n".join([f"{m['dir'].upper()}: {m['src']} -> {m['trg']}" for m in st.session_state.chat_history])
+            st.download_button("📥 Sohbeti İndir (TXT)", chat_log, file_name="sohbet_gecmisi.txt")
+            
         if st.button("🗑️ Temizle", type="primary"): st.session_state.chat_history = []; st.rerun()
 
     st.markdown(f"### 🗣️ Sohbet: {my_lang} ↔️ {target_lang}")
@@ -168,12 +168,16 @@ def show_chat():
                 st.session_state.chat_history.append({"src": txt, "trg": trans, "dir": "you", "audio": audio})
 
     st.divider()
-    for msg in reversed(st.session_state.chat_history):
+    for i, msg in enumerate(reversed(st.session_state.chat_history)):
         if msg['dir'] == "me":
             st.markdown(f'<div class="chat-row source-box"><small>🗣️ {my_lang}:</small> {msg["src"]}<br><b style="font-size:1.2em">🤖 {target_lang}: {msg["trg"]}</b></div>', unsafe_allow_html=True)
         else:
             st.markdown(f'<div class="chat-row target-box"><small>{target_lang}:</small> {msg["src"]} 🗣️<br><b style="font-size:1.2em">{msg["trg"]} : {my_lang} 🤖</b></div>', unsafe_allow_html=True)
-        if msg['audio']: st.audio(msg['audio'], format="audio/mp3")
+        
+        if msg['audio']: 
+            c_audio, c_dl = st.columns([4, 1])
+            with c_audio: st.audio(msg['audio'], format="audio/mp3")
+            with c_dl: st.download_button("⬇️", msg['audio'], file_name=f"ses_{i}.mp3", mime="audio/mp3", key=f"dl_{i}")
 
 # --- MOD 2: KONFERANS ---
 def show_conf():
@@ -181,11 +185,15 @@ def show_conf():
         if st.button("⬅️ Menüye Dön"): st.session_state.page = "home"; st.rerun()
         st.header("🎙️ Konferans")
         target_lang = st.selectbox("Hedef Dil", ["Türkçe", "English", "Deutsch", "Français", "Español"], index=1)
-        if st.button("📝 Özet Çıkar"):
+        if st.button("📝 Toplantı Özeti Çıkar"):
             if st.session_state.chat_history:
                 full = "\n".join([m['trg'] for m in st.session_state.chat_history])
                 st.session_state.summary = get_analysis(full, target_lang)
             else: st.warning("Veri yok.")
+        
+        # RAPOR İNDİRME
+        if "summary" in st.session_state:
+            st.download_button("📥 Raporu İndir", st.session_state.summary, file_name="toplanti_raporu.txt")
 
     st.markdown(f"### 🎙️ Simültane Çeviri -> {target_lang}")
     audio = audio_recorder(text="Başlat / Bitir", icon_size="5x", recording_color="red", pause_threshold=300.0)
@@ -219,7 +227,11 @@ def show_file():
         with st.spinner("İşleniyor..."):
             txt = client.audio.transcriptions.create(file=("a.wav", f), model="whisper-large-v3").text
             trans = get_translation(txt, target_lang, "Normal")
-            st.subheader("Çeviri:"); st.write(trans)
+            
+            st.subheader("Çeviri:")
+            st.write(trans)
+            
+            st.download_button("📥 Çeviriyi İndir", trans, file_name="dosya_ceviri.txt")
 
 # --- MOD 4: WEB ---
 def show_web():
@@ -232,16 +244,13 @@ def show_web():
     url = st.text_input("URL")
     if st.button("Analiz Et") and url:
         with st.spinner("Site yerel olarak okunuyor..."):
-            # 1. YEREL İŞLEM (Web Scraping)
             raw_text = local_read_web(url)
-            
             if raw_text and len(raw_text) > 50:
-                # 2. AI İŞLEM (Sadece analiz)
                 summ = get_analysis(raw_text, target_lang)
-                st.success("✅ Analiz Tamamlandı")
-                st.markdown(summ)
+                st.markdown(f"<div class='info-box'>{summ}</div>", unsafe_allow_html=True)
+                st.download_button("📥 Analizi İndir", summ, file_name="web_analiz.txt")
             else:
-                st.error("Site içeriği okunamadı (Bot koruması olabilir).")
+                st.error("Site içeriği okunamadı.")
 
 # --- MOD 5: BELGE ---
 def show_doc():
@@ -255,14 +264,14 @@ def show_doc():
     
     if doc_file:
         with st.spinner("PDF okunuyor..."):
-            # 1. YEREL İŞLEM (PDF Parsing)
             doc_text = local_read_pdf(doc_file)
             st.info(f"Belge okundu: {len(doc_text)} karakter.")
             
         if st.button("Özetle"):
             with st.spinner("AI Analiz Ediyor..."):
-                # 2. AI İŞLEM
-                st.markdown(get_analysis(doc_text, target_lang))
+                res = get_analysis(doc_text, target_lang)
+                st.markdown(res)
+                st.download_button("📥 Özeti İndir", res, file_name="belge_ozeti.txt")
 
 # --- ROUTER ---
 if st.session_state.page == "home": show_home()
