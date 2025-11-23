@@ -9,6 +9,7 @@ import PyPDF2
 import datetime
 import urllib.parse
 import difflib
+import random
 
 # --- 1. GENEL AYARLAR ---
 st.set_page_config(
@@ -18,16 +19,16 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. STATE YÖNETİMİ ---
+# --- 2. STATE YÖNETİMİ (EN BAŞTA) ---
 if "theme" not in st.session_state: st.session_state.theme = "Light"
 if "history" not in st.session_state: st.session_state.history = []
-if "chat_messages" not in st.session_state: st.session_state.chat_messages = []
-if "rp_history" not in st.session_state: st.session_state.rp_history = []
-if "rp_scenario" not in st.session_state: st.session_state.rp_scenario = ""
 if "res_text" not in st.session_state: st.session_state.res_text = ""
-if "diff_html" not in st.session_state: st.session_state.diff_html = ""
 if "input_val" not in st.session_state: st.session_state.input_val = ""
+if "diff_html" not in st.session_state: st.session_state.diff_html = ""
 if "keywords" not in st.session_state: st.session_state.keywords = ""
+if "detected_lang" not in st.session_state: st.session_state.detected_lang = ""
+if "chat_messages" not in st.session_state: st.session_state.chat_messages = []
+if "target_lang_idx" not in st.session_state: st.session_state.target_lang_idx = 0
 
 # --- 3. DINAMIK CSS (DÜZELTİLMİŞ) ---
 def get_css(theme):
@@ -48,7 +49,7 @@ def get_css(theme):
         user_bubble = "#dbeafe"
         ai_bubble = "#f1f5f9"
 
-    # NOT: CSS blokları için çift {{ }} kullanıldı, Python değişkenleri için tek { } kullanıldı.
+    # NOT: CSS blokları için {{ }} (çift), Python değişkenleri için { } (tek) kullanıyoruz.
     return f"""
     <style>
     .stApp {{ background-color: {bg_col}; color: {txt_col}; font-family: 'Inter', sans-serif; }}
@@ -94,16 +95,23 @@ def get_css(theme):
     .chat-me {{ background: {user_bubble}; border-left: 4px solid #3b82f6; padding: 10px; border-radius: 10px; margin-bottom: 8px; text-align: right; margin-left: 20%; color: {txt_col}; }}
     .chat-you {{ background: {ai_bubble}; border-right: 4px solid #ec4899; padding: 10px; border-radius: 10px; margin-bottom: 8px; text-align: left; margin-right: 20%; color: {txt_col}; }}
     
-    /* Roleplay */
-    .rp-ai {{ background: {ai_bubble}; padding: 15px; border-radius: 15px 15px 15px 0; margin-bottom: 10px; border-left: 4px solid #64748b; color: {txt_col}; }}
-    .rp-user {{ background: {user_bubble}; padding: 15px; border-radius: 15px 15px 0 15px; margin-bottom: 10px; text-align: right; border-right: 4px solid #6366f1; color: {txt_col}; }}
-    
     /* Geçmiş */
     .history-item {{
         padding: 8px; margin-bottom: 5px; background: {box_bg}; border-radius: 5px;
         font-size: 0.85rem; border-left: 3px solid #6366f1; color: {txt_col};
         border: 1px solid {border};
     }}
+    
+    /* Dil Etiketi */
+    .lang-badge {{
+        font-size: 0.8rem; color: #888; margin-bottom: 5px; display: block;
+    }}
+    
+    /* İkincil Butonlar */
+    .secondary-btn div.stButton > button {{
+        background-color: transparent; border: 1px solid {border}; color: {txt_col};
+    }}
+    .secondary-btn div.stButton > button:hover {{ background-color: {border}; }}
     </style>
     """
 
@@ -135,17 +143,9 @@ def ai_engine(text, task, target_lang="English", tone="Normal", glossary="", ext
         sys_msg = "Editörsün. Metni düzelt. Sadece düzeltilmiş metni ver."
     elif task == "summarize":
         sys_msg = f"Analistsin. Metni {target_lang} dilinde özetle. Format: {format_style}."
-    elif task == "roleplay":
-        sys_msg = f"Sen bir dil eğitmenisin. Senaryo: {extra_ctx}. Rol yap, cevap ver ve parantez içinde hataları düzelt. Dil: {target_lang}."
 
     try:
-        msgs = [{"role": "system", "content": sys_msg}]
-        if task == "roleplay":
-            for msg in st.session_state.rp_history[-6:]: msgs.append(msg)
-        
-        msgs.append({"role": "user", "content": text[:15000]})
-
-        res = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=msgs)
+        res = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": text[:15000]}])
         full_res = res.choices[0].message.content
         
         if task == "translate" and "|||" in full_res:
@@ -203,43 +203,45 @@ def local_read_web(url):
 
 # --- YAN MENÜ ---
 with st.sidebar:
-    st.title("LinguaFlow")
-    
-    sb1, sb2 = st.tabs(["Ayarlar", "Geçmiş"])
-    
-    with sb1:
-        st.markdown("### 🎨 Görünüm")
-        theme_mode = st.radio("Tema", ["Light", "Dark"], horizontal=True, label_visibility="collapsed")
-        if theme_mode != st.session_state.theme:
-            st.session_state.theme = theme_mode
-            st.rerun()
+    st.markdown("### 🎨 Görünüm")
+    theme_mode = st.radio("Tema", ["Light", "Dark"], horizontal=True, label_visibility="collapsed")
+    if theme_mode != st.session_state.theme:
+        st.session_state.theme = theme_mode
+        st.rerun()
 
-        st.divider()
-        st.markdown("### ⚙️ Tercihler")
-        speed_opt = st.select_slider("Ses Hızı", options=["Yavaş", "Normal"], value="Normal")
-        is_slow = True if speed_opt == "Yavaş" else False
-        
-        with st.expander("📚 Sözlük"):
-            glossary_txt = st.text_area("Örn: AI=Yapay Zeka", height=70)
+    st.divider()
+    st.markdown("### ⚙️ Ayarlar")
+    # Mobil Mod Anahtarı
+    is_mobile = st.toggle("📱 Mobil Mod", value=False)
+    
+    speed_opt = st.select_slider("Ses Hızı", options=["Yavaş", "Normal"], value="Normal")
+    is_slow = True if speed_opt == "Yavaş" else False
+    
+    with st.expander("📚 Sözlük"):
+        glossary_txt = st.text_area("Örn: AI=Yapay Zeka", height=70)
 
-    with sb2:
-        if st.session_state.history:
-            for item in st.session_state.history[:5]:
-                st.markdown(f"<div class='history-item'>{item['src']}</div>", unsafe_allow_html=True)
-            if st.button("Temizle"): 
-                st.session_state.history = []
-                st.rerun()
-        else:
-            st.info("Geçmiş boş")
+    st.divider()
+    st.markdown("### 🕒 Geçmiş")
+    if st.session_state.history:
+        for item in st.session_state.history[:5]:
+            st.markdown(f"<div class='history-item'>{item['src']}</div>", unsafe_allow_html=True)
+        if st.button("Temizle", type="secondary"): st.session_state.history = []; st.rerun()
 
 st.markdown('<div class="header-logo">LinguaFlow</div>', unsafe_allow_html=True)
 
 # --- SEKMELER ---
-tab_text, tab_voice, tab_files, tab_web = st.tabs(["📝 Metin", "🎙️ Ses", "📂 Dosya", "🔗 Web"])
+if is_mobile:
+    tabs = st.tabs(["📝 Metin", "💬 Sohbet", "📂 Dosya", "🔗 Web"])
+    t_text, t_chat, t_file, t_web = tabs[0], tabs[1], tabs[2], tabs[3]
+else:
+    tabs = st.tabs(["📝 Metin", "📂 Dosya", "🔗 Web"])
+    t_text, t_file, t_web = tabs[0], tabs[1], tabs[2]
+    t_chat = None
+
 LANG_OPTIONS = ["English", "Türkçe", "Deutsch", "Français", "Español", "Italiano", "Русский", "العربية", "中文"]
 
 # --- 1. METİN ---
-with tab_text:
+with t_text:
     c1, c2, c3 = st.columns([3, 1, 3])
     with c1: st.markdown("**Giriş**")
     with c3: target_lang = st.selectbox("Hedef", LANG_OPTIONS, label_visibility="collapsed")
@@ -257,7 +259,6 @@ with tab_text:
                         st.session_state.res_text = ai_engine(input_text, "translate", target_lang, "Normal", glossary_txt)
                         st.session_state.diff_html = ""
                         st.session_state.input_val = input_text
-                        # Geçmiş
                         ts = datetime.datetime.now().strftime("%H:%M")
                         st.session_state.history.insert(0, {"time": ts, "src": input_text[:20]+".."})
         with b2:
@@ -277,9 +278,8 @@ with tab_text:
             res = st.session_state.res_text
             st.markdown(f"""<div class="result-box">{res if res else '...'}</div>""", unsafe_allow_html=True)
             
-            # Anahtar Kelimeler
             if st.session_state.keywords:
-                st.info(f"🔑 **Anahtar Kelimeler:** {st.session_state.keywords}")
+                st.info(f"🔑 **Anahtar:** {st.session_state.keywords}")
             
             if res:
                 st.write("")
@@ -288,55 +288,44 @@ with tab_text:
                     aud = create_audio(res, target_lang, is_slow)
                     if aud: st.audio(aud, format="audio/mp3")
                 with cb:
+                    st.markdown('<div class="secondary-btn">', unsafe_allow_html=True)
                     if st.button("🗑️ Temizle"):
                         st.session_state.input_val = ""
                         st.session_state.res_text = ""
                         st.session_state.keywords = ""
                         st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
                 with cc: render_share(res)
 
-# --- 2. SES ---
-with tab_voice:
-    mode = st.radio("Mod:", ["🗣️ Sohbet", "🎙️ Konferans"], horizontal=True)
-    st.divider()
-    
-    if "Sohbet" in mode:
+# --- 2. SOHBET (MOBİL) ---
+if is_mobile and t_chat:
+    with t_chat:
+        st.info("🗣️ **Canlı Sohbet**")
         c1, c2 = st.columns(2)
         with c1:
-            st.info("SİZ")
-            a1 = audio_recorder(text="", icon_size="3x", key="v1", recording_color="#3b82f6", neutral_color="#dbeafe")
+            st.write("🎤 SİZ")
+            a1 = audio_recorder(text="", icon_size="3x", key="v1", recording_color="#3b82f6")
             if a1:
                 txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(a1)), model="whisper-large-v3").text
                 res = ai_engine(txt, "translate", target_lang, glossary=glossary_txt)
-                st.markdown(f"<div class='chat-me'>{txt}<br><b>{res}</b></div>", unsafe_allow_html=True)
-                aud = create_audio(res, target_lang, is_slow)
-                if aud: st.audio(aud, format="audio/mp3", autoplay=True)
+                st.session_state.chat_messages.append({"role": "me", "src": txt, "trg": res})
         with c2:
-            st.warning(f"MİSAFİR ({target_lang})")
-            a2 = audio_recorder(text="", icon_size="3x", key="v2", recording_color="#ec4899", neutral_color="#fce7f3")
+            st.write(f"🎤 MİSAFİR")
+            a2 = audio_recorder(text="", icon_size="3x", key="v2", recording_color="#ec4899")
             if a2:
                 txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(a2)), model="whisper-large-v3").text
                 res = ai_engine(txt, "translate", "Türkçe", glossary=glossary_txt)
-                st.markdown(f"<div class='chat-you'>{txt}<br><b>{res}</b></div>", unsafe_allow_html=True)
-                aud = create_audio(res, "Türkçe", is_slow)
-                if aud: st.audio(aud, format="audio/mp3", autoplay=True)
+                st.session_state.chat_messages.append({"role": "you", "src": txt, "trg": res})
 
-    else: # Konferans
-        c1, c2 = st.columns([1, 3])
-        with c1:
-            st.write("Sürekli Dinleme")
-            ac = audio_recorder(text="BAŞLAT / DURDUR", icon_size="2x", recording_color="#dc2626", pause_threshold=20.0)
-        with c2:
-            if ac:
-                with st.spinner("Analiz..."):
-                    txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(ac)), model="whisper-large-v3").text
-                    trans = ai_engine(txt, "translate", target_lang, glossary=glossary_txt)
-                    st.success(f"Orijinal: {txt}")
-                    st.info(f"Çeviri: {trans}")
-                    st.download_button("İndir", f"{txt}\n{trans}", "kayit.txt")
+        st.divider()
+        if st.session_state.chat_messages:
+            for msg in reversed(st.session_state.chat_messages):
+                cls = "chat-me" if msg['role'] == "me" else "chat-you"
+                st.markdown(f"<div class='{cls}'>{msg['src']}<br><b>{msg['trg']}</b></div>", unsafe_allow_html=True)
+            if st.button("Temizle", type="secondary"): st.session_state.chat_messages = []; st.rerun()
 
 # --- 3. DOSYA ---
-with tab_files:
+with t_file:
     u_file = st.file_uploader("Dosya", type=['pdf', 'mp3', 'wav', 'm4a'])
     if u_file:
         if st.button("İşle"):
@@ -350,7 +339,7 @@ with tab_files:
                 else: st.error("Hata.")
 
 # --- 4. WEB ---
-with tab_web:
+with t_web:
     url = st.text_input("URL")
     if st.button("Analiz") and url:
         with st.spinner("..."):
