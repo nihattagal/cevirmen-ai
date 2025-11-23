@@ -7,24 +7,25 @@ st.set_page_config(page_title="AI Çevirmen", layout="centered")
 
 st.title("🎤 AI Canlı Çevirmen")
 
-# Sidebar
+# --- GÜVENLİK ---
+# Anahtarı kullanıcıdan değil, sunucunun gizli kasasından çekiyoruz
+try:
+    api_key = st.secrets["GROQ_API_KEY"]
+except:
+    st.error("Sunucu ayarlarında API anahtarı bulunamadı! Lütfen Secrets kısmını kontrol edin.")
+    st.stop()
+
+# Groq Bağlantısı
+client = Groq(api_key=api_key)
+
+# Sidebar (Sadece gerekli ayarlar kaldı)
 with st.sidebar:
     st.header("Ayarlar")
-    api_key = st.text_input("Groq API Anahtarı:", type="password")
+    # API Anahtarı girişi ARTIK YOK
     user_mode = st.selectbox("Mod:", ("Resmi", "Samimi", "Turist", "Agresif"))
-    target_lang = st.selectbox("Hedef Dil:", ("İngilizce", "Türkçe", "Almanca", "İspanyolca"))
+    target_lang = st.selectbox("Hedef Dil:", ("İngilizce", "Türkçe", "Almanca", "İspanyolca", "Fransızca"))
 
-if not api_key:
-    st.warning("Lütfen API anahtarını girin.")
-    st.stop()
-
-try:
-    client = Groq(api_key=api_key)
-except:
-    st.error("API Anahtarı hatalı.")
-    st.stop()
-
-st.write("Mikrofon butonuna basarak konuşun (Kayıt başlar), tekrar basarak durdurun (Çeviri yapar):")
+st.write("Mikrofona bas, konuş ve tekrar bas (Otomatik Çevirir):")
 
 # Ses Kaydedici
 audio_bytes = audio_recorder(
@@ -32,41 +33,43 @@ audio_bytes = audio_recorder(
     recording_color="#e8b62c",
     neutral_color="#6aa36f",
     icon_name="microphone",
-    icon_size="2x",
+    icon_size="3x", # Butonu biraz büyüttüm telefonda kolay basılsın diye
 )
 
 if audio_bytes:
-    # 1. Sesi oynat
+    # 1. Kaydı Oynatma (İstersen burayı silebilirsin, sesini duymak istemezsen)
     st.audio(audio_bytes, format="audio/wav")
     
-    with st.spinner('Çevriliyor...'):
+    with st.spinner('Yapay Zeka düşünüyor...'):
         try:
-            # BytesIO ile dosyayı sanal olarak oluşturuyoruz
+            # Dosya Hazırlığı
             audio_file = io.BytesIO(audio_bytes)
             audio_file.name = "audio.wav"
             
-            # Whisper (Sesi Yazıya Dök)
+            # 1. Aşama: Sesi Anla (Whisper)
             transcription = client.audio.transcriptions.create(
                 file=("audio.wav", audio_file), 
                 model="whisper-large-v3",
                 response_format="text"
             )
             
-            st.success(f"Algılanan: {transcription}")
+            # Ekrana ne anladığını yaz
+            st.info(f"🗣️ Algılanan: {transcription}")
             
-            # --- GÜNCELLENEN KISIM BURASI ---
-            # Llama 3.3 (Yeni Model)
+            # 2. Aşama: Çevir (Llama 3.3)
             system_prompt = f"Sen çevirmensin. Mod: {user_mode}. Hedef: {target_lang}. Sadece çeviriyi yaz."
             
             completion = client.chat.completions.create(
-                model="llama-3.3-70b-versatile", # <-- İSMİ GÜNCELLEDİK
+                model="llama-3.3-70b-versatile",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": transcription}
                 ],
             )
             
-            st.markdown(f"### 🚀 {completion.choices[0].message.content}")
+            # Sonucu Ekrana Bas
+            st.success("Çeviri:")
+            st.markdown(f"## 🚀 {completion.choices[0].message.content}")
             
         except Exception as e:
-            st.error(f"Hata oluştu: {str(e)}")
+            st.error(f"Bir hata oluştu: {str(e)}")
