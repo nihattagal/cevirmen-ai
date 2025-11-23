@@ -9,83 +9,116 @@ import PyPDF2
 import datetime
 import urllib.parse
 from fpdf import FPDF
+import difflib # Fark analizi için geri geldi
 
 # --- 1. GENEL AYARLAR ---
 st.set_page_config(
-    page_title="LinguaFlow Suite",
+    page_title="LinguaFlow Ultimate",
     page_icon="💎",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- 2. CSS TASARIM (PROFESYONEL) ---
-st.markdown("""
-    <style>
-    .stApp { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
-    
-    /* Başlık */
-    .header-logo { 
-        font-size: 2rem; font-weight: 800; color: #0f172a; 
-        text-align: center; margin-top: -20px; letter-spacing: -0.5px;
-    }
-    
-    /* Metin Alanı */
-    .stTextArea textarea {
-        border: 1px solid #cbd5e1; border-radius: 10px;
-        font-size: 1.1rem; height: 250px !important; padding: 15px;
-        background: white; resize: none;
-    }
-    .stTextArea textarea:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2); }
-    
-    /* Sonuç Kutusu */
-    .result-box {
-        background-color: white; border: 1px solid #cbd5e1; border-radius: 10px;
-        min-height: 250px; padding: 20px; font-size: 1.1rem; color: #334155;
-        white-space: pre-wrap; box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-    }
-    
-    /* Sohbet Balonları (Dual Chat) */
-    .chat-me { background: #dbeafe; border-left: 4px solid #3b82f6; padding: 10px; border-radius: 10px; margin-bottom: 8px; text-align: right; margin-left: 20%; }
-    .chat-you { background: #fce7f3; border-right: 4px solid #ec4899; padding: 10px; border-radius: 10px; margin-bottom: 8px; text-align: left; margin-right: 20%; }
-    
-    /* Roleplay Balonları */
-    .rp-ai { background: #f1f5f9; padding: 15px; border-radius: 15px; margin-bottom: 10px; border-left: 4px solid #475569; }
-    .rp-user { background: #e0e7ff; padding: 15px; border-radius: 15px; margin-bottom: 10px; text-align: right; border-right: 4px solid #4f46e5; }
-
-    /* Butonlar */
-    div.stButton > button {
-        background-color: #0f172a; color: white; border: none; border-radius: 8px;
-        padding: 12px; font-weight: 600; width: 100%; transition: all 0.2s;
-    }
-    div.stButton > button:hover { background-color: #334155; transform: translateY(-1px); }
-    </style>
-""", unsafe_allow_html=True)
-
-# --- 3. API ---
-try:
-    client = Groq(api_key=st.secrets["GROQ_API_KEY"])
-except:
-    st.error("⚠️ API Key Eksik!")
-    st.stop()
-
-# --- 4. STATE ---
+# --- 2. STATE YÖNETİMİ ---
+if "theme" not in st.session_state: st.session_state.theme = "Light"
 if "history" not in st.session_state: st.session_state.history = []
-if "chat_messages" not in st.session_state: st.session_state.chat_messages = [] # Sohbet için
-if "rp_history" not in st.session_state: st.session_state.rp_history = [] # Roleplay için
+if "chat_messages" not in st.session_state: st.session_state.chat_messages = []
+if "rp_history" not in st.session_state: st.session_state.rp_history = []
 if "rp_scenario" not in st.session_state: st.session_state.rp_scenario = ""
 if "res_text" not in st.session_state: st.session_state.res_text = ""
+if "diff_html" not in st.session_state: st.session_state.diff_html = ""
 if "input_val" not in st.session_state: st.session_state.input_val = ""
 if "keywords" not in st.session_state: st.session_state.keywords = ""
 
+# --- 3. DINAMIK CSS (TEMA DESTEĞİ) ---
+def get_css(theme):
+    if theme == "Dark":
+        bg_col = "#0e1117"
+        txt_col = "#e0e0e0"
+        box_bg = "#262730"
+        border = "#444"
+        primary = "#4f46e5"
+        user_bubble = "#1e3a8a"
+        ai_bubble = "#374151"
+    else:
+        bg_col = "#f8fafc"
+        txt_col = "#1e293b"
+        box_bg = "#ffffff"
+        border = "#e2e8f0"
+        primary = "#0f172a"
+        user_bubble = "#dbeafe"
+        ai_bubble = "#f1f5f9"
+
+    return f"""
+    <style>
+    .stApp {{ background-color: {bg_col}; color: {txt_col}; font-family: 'Inter', sans-serif; }}
+    
+    /* Başlık */
+    .header-logo {{ 
+        font-size: 2.2rem; font-weight: 800; color: {txt_color}; 
+        text-align: center; margin-top: -20px; letter-spacing: -0.5px;
+    }}
+    
+    /* Metin Alanları */
+    .stTextArea textarea {{
+        background-color: {box_bg}; color: {txt_col};
+        border: 1px solid {border}; border-radius: 10px;
+        font-size: 1.1rem; height: 250px !important; padding: 15px; resize: none;
+    }}
+    .stTextArea textarea:focus {{ border-color: #6366f1; }}
+    
+    /* Sonuç Kutusu */
+    .result-box {{
+        background-color: {box_bg}; color: {txt_col};
+        border: 1px solid {border}; border-radius: 10px;
+        min-height: 250px; padding: 20px; font-size: 1.1rem;
+        white-space: pre-wrap; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }}
+    
+    /* Diff (Fark) Kutusu */
+    .diff-box {{
+        background-color: {box_bg}; border: 1px solid {border}; border-radius: 10px;
+        padding: 20px; font-family: monospace; font-size: 1rem; color: {txt_col};
+    }}
+    .diff-del {{ background-color: #fca5a5; color: #7f1d1d; text-decoration: line-through; padding: 0 4px; border-radius: 4px; }}
+    .diff-add {{ background-color: #86efac; color: #14532d; padding: 0 4px; border-radius: 4px; font-weight: bold; }}
+
+    /* Butonlar */
+    div.stButton > button {{
+        background-color: {primary}; color: white; border: none; border-radius: 8px;
+        padding: 12px; font-weight: 600; width: 100%; transition: all 0.2s;
+    }}
+    div.stButton > button:hover {{ opacity: 0.9; transform: translateY(-1px); }}
+    
+    /* Sohbet Balonları */
+    .chat-me {{ background: {user_bubble}; border-left: 4px solid #3b82f6; padding: 10px; border-radius: 10px; margin-bottom: 8px; text-align: right; margin-left: 20%; color: {txt_col}; }}
+    .chat-you {{ background: {ai_bubble}; border-right: 4px solid #ec4899; padding: 10px; border-radius: 10px; margin-bottom: 8px; text-align: left; margin-right: 20%; color: {txt_col}; }}
+    
+    /* Roleplay */
+    .rp-ai {{ background: {ai_bubble}; padding: 15px; border-radius: 15px 15px 15px 0; margin-bottom: 10px; border-left: 4px solid #64748b; color: {txt_col}; }}
+    .rp-user {{ background: {user_bubble}; padding: 15px; border-radius: 15px 15px 0 15px; margin-bottom: 10px; text-align: right; border-right: 4px solid #6366f1; color: {txt_col}; }}
+    </style>
+    """
+
+st.markdown(get_css(st.session_state.theme), unsafe_allow_html=True)
+
+# --- 4. API ---
+try:
+    client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+except:
+    st.error("⚠️ API Key Eksik! Secrets ayarlarını kontrol edin.")
+    st.stop()
+
 # --- 5. MOTOR ---
-def ai_engine(text, task, target_lang="English", tone="Normal", glossary="", extra_ctx=""):
+def ai_engine(text, task, target_lang="English", tone="Normal", glossary="", extra_ctx="", format_style="Normal Metin"):
     if not text: return ""
     
     glossary_prompt = f"TERMİNOLOJİ: \n{glossary}" if glossary else ""
 
     if task == "translate":
         sys_msg = f"""
-        Sen uzman tercümansın. Hedef: {target_lang}. Ton: {tone}. {glossary_prompt}.
+        Sen uzman tercümansın. Hedef: {target_lang}. Ton: {tone}. Çıktı Formatı: {format_style}.
+        {glossary_prompt}
         GÖREV: 
         1. Çeviriyi yap.
         2. Metindeki en önemli 3 anahtar kelimeyi bul.
@@ -94,7 +127,7 @@ def ai_engine(text, task, target_lang="English", tone="Normal", glossary="", ext
     elif task == "improve":
         sys_msg = "Editörsün. Metni düzelt. Sadece düzeltilmiş metni ver."
     elif task == "summarize":
-        sys_msg = f"Analistsin. Metni {target_lang} dilinde özetle."
+        sys_msg = f"Analistsin. Metni {target_lang} dilinde özetle. Format: {format_style}."
     elif task == "roleplay":
         sys_msg = f"Sen bir dil eğitmenisin. Senaryo: {extra_ctx}. Rol yap, cevap ver ve parantez içinde hataları düzelt. Dil: {target_lang}."
 
@@ -108,7 +141,6 @@ def ai_engine(text, task, target_lang="English", tone="Normal", glossary="", ext
         res = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=msgs)
         full_res = res.choices[0].message.content
         
-        # Metin modunda anahtar kelimeleri ayır
         if task == "translate" and "|||" in full_res:
             parts = full_res.split("|||")
             st.session_state.keywords = parts[1].strip()
@@ -118,26 +150,28 @@ def ai_engine(text, task, target_lang="English", tone="Normal", glossary="", ext
 
     except Exception as e: return f"Hata: {e}"
 
+def generate_diff(original, corrected):
+    d = difflib.Differ()
+    diff = list(d.compare(original.split(), corrected.split()))
+    html = []
+    for token in diff:
+        if token.startswith("- "): html.append(f"<span class='diff-del'>{token[2:]}</span>")
+        elif token.startswith("+ "): html.append(f"<span class='diff-add'>{token[2:]}</span>")
+        elif token.startswith("  "): html.append(token[2:])
+    return " ".join(html)
+
 def create_pdf(title, content):
-    """Güvenli PDF Oluşturucu"""
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", 'B', 16)
-    # Başlık temizle
     safe_title = title.encode('latin-1', 'ignore').decode('latin-1')
     pdf.cell(0, 10, safe_title, ln=True, align='C')
     pdf.ln(10)
     pdf.set_font("Arial", '', 12)
-    
-    # İçerik temizle (Unicode karakterleri latin-1'e uyarla veya at)
-    # Not: Gerçek prodüksiyonda Unicode font (DejaVuSans) kullanılır, bu basit çözümdür.
     replacements = {'ğ':'g', 'Ğ':'G', 'ü':'u', 'Ü':'U', 'ş':'s', 'Ş':'S', 'ı':'i', 'İ':'I', 'ö':'o', 'Ö':'O', 'ç':'c', 'Ç':'C'}
     safe_content = content
     for k, v in replacements.items(): safe_content = safe_content.replace(k, v)
-    
-    # Desteklenmeyen diğer karakterleri temizle
     safe_content = safe_content.encode('latin-1', 'replace').decode('latin-1')
-    
     pdf.multi_cell(0, 10, safe_content)
     return pdf.output(dest='S').encode('latin-1')
 
@@ -149,6 +183,12 @@ def create_audio(text, lang_name, speed=False):
         gTTS(text=text, lang=lang_code, slow=speed).write_to_fp(fp)
         return fp.getvalue()
     except: return None
+
+def render_share(text):
+    if not text: return
+    encoded = urllib.parse.quote(text)
+    wa = f"https://api.whatsapp.com/send?text={encoded}"
+    st.markdown(f"<a href='{wa}' target='_blank' style='text-decoration:none; color:#25D366; font-weight:bold; font-size:0.85rem;'>📲 WhatsApp</a>", unsafe_allow_html=True)
 
 def local_read_file(file):
     try:
@@ -169,12 +209,17 @@ def local_read_web(url):
 # ARAYÜZ
 # ==========================================
 
+# --- YAN MENÜ ---
 with st.sidebar:
-    st.title("LinguaFlow")
-    st.caption("Ultimate Suite v28.0")
-    
+    st.markdown("### 🎨 Görünüm")
+    theme_mode = st.radio("Tema", ["Light", "Dark"], horizontal=True, label_visibility="collapsed")
+    if theme_mode != st.session_state.theme:
+        st.session_state.theme = theme_mode
+        st.rerun()
+
+    st.divider()
     st.markdown("### ⚙️ Ayarlar")
-    speed_opt = st.select_slider("Hız", options=["Yavaş", "Normal"], value="Normal")
+    speed_opt = st.select_slider("Ses Hızı", options=["Yavaş", "Normal"], value="Normal")
     is_slow = True if speed_opt == "Yavaş" else False
     
     with st.expander("📚 Sözlük"):
@@ -201,33 +246,53 @@ with tab_text:
     col_in, col_out = st.columns(2)
     with col_in:
         input_text = st.text_area("Metin", value=st.session_state.input_val, height=250, placeholder="Yazın...", label_visibility="collapsed")
-        if st.button("Çevir ➔"):
-            if input_text:
-                with st.spinner("..."):
-                    st.session_state.res_text = ai_engine(input_text, "translate", target_lang, "Normal", glossary_txt)
-                    st.session_state.input_val = input_text
-                    ts = datetime.datetime.now().strftime("%H:%M")
-                    st.session_state.history.insert(0, {"src": input_text, "trg": st.session_state.res_text})
+        
+        b1, b2, b3 = st.columns([3, 3, 3])
+        with b1:
+            if st.button("Çevir ➔"):
+                if input_text:
+                    with st.spinner("..."):
+                        st.session_state.res_text = ai_engine(input_text, "translate", target_lang, "Normal", glossary_txt)
+                        st.session_state.input_val = input_text
+                        st.session_state.diff_html = "" # Diff sıfırla
+                        
+                        # Geçmiş
+                        ts = datetime.datetime.now().strftime("%H:%M")
+                        st.session_state.history.insert(0, {"src": input_text[:30], "trg": st.session_state.res_text[:30]})
+        with b2:
+            if st.button("✨ Düzelt"):
+                if input_text:
+                    with st.spinner("Hatalar bulunuyor..."):
+                        corrected = ai_engine(input_text, "improve")
+                        st.session_state.diff_html = generate_diff(input_text, corrected)
+                        st.session_state.res_text = corrected
+        with b3:
+            out_format = st.selectbox("Format", ["Normal Metin", "E-Posta", "Madde İşareti", "Tweet"], label_visibility="collapsed")
 
     with col_out:
-        res = st.session_state.res_text
-        st.markdown(f"""<div class="result-box">{res if res else '...'}</div>""", unsafe_allow_html=True)
+        # Eğer Diff (Düzeltme) varsa onu göster
+        if st.session_state.diff_html:
+            st.markdown(f"<div class='diff-box'>{st.session_state.diff_html}</div>", unsafe_allow_html=True)
+            st.caption("🔴 Silinen  🟢 Eklenen")
+        else:
+            res = st.session_state.res_text
+            st.markdown(f"""<div class="result-box">{res if res else '...'}</div>""", unsafe_allow_html=True)
         
-        # Anahtar Kelimeler (Varsa)
-        if st.session_state.keywords:
+        # Anahtar Kelimeler
+        if st.session_state.keywords and not st.session_state.diff_html:
             st.info(f"🔑 **Anahtar Kelimeler:** {st.session_state.keywords}")
         
-        if res:
+        if st.session_state.res_text:
             st.write("")
             ca, cb = st.columns([1, 4])
             with ca:
-                aud = create_audio(res, target_lang, is_slow)
+                aud = create_audio(st.session_state.res_text, target_lang, is_slow)
                 if aud: st.audio(aud, format="audio/mp3")
-            with cb: st.code(res, language=None)
+            with cb: st.code(st.session_state.res_text, language=None)
 
-# --- 2. SES MERKEZİ (HİBRİT) ---
+# --- 2. SES MERKEZİ ---
 with tab_voice:
-    v_mode = st.radio("Mod Seçin:", ["🗣️ Karşılıklı Sohbet (Turist)", "🎙️ Konferans (Toplantı)"], horizontal=True)
+    v_mode = st.radio("Mod:", ["🗣️ Sohbet (Dual)", "🎙️ Konferans (Tek)"], horizontal=True)
     st.divider()
     
     if "Sohbet" in v_mode:
@@ -252,7 +317,6 @@ with tab_voice:
                 aud = create_audio(res, "Türkçe", is_slow)
                 if aud: st.audio(aud, format="audio/mp3", autoplay=True)
         
-        # Sohbet Geçmişi
         st.write("---")
         for msg in reversed(st.session_state.chat_messages):
             cls = "chat-me" if msg['role'] == "me" else "chat-you"
@@ -303,14 +367,14 @@ with tab_roleplay:
 with tab_files:
     u_file = st.file_uploader("Dosya", type=['pdf', 'mp3', 'wav', 'm4a'])
     if u_file:
+        action = st.selectbox("İşlem", ["Çevir", "Özetle"])
         if st.button("İşle"):
             with st.spinner("..."):
                 raw = local_read_file(u_file)
                 if raw:
-                    mode = "translate" if len(raw) < 3000 else "summarize"
+                    mode = "translate" if action == "Çevir" else "summarize"
                     res = ai_engine(raw, mode, target_lang, glossary=glossary_txt)
                     st.markdown(f"<div class='result-box'>{res}</div>", unsafe_allow_html=True)
-                    
                     pdf = create_pdf("Dosya Analizi", res)
                     st.download_button("📄 PDF İndir", pdf, "analiz.pdf", "application/pdf")
                 else: st.error("Hata.")
