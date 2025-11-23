@@ -90,7 +90,15 @@ def ai_engine(text, task, target_lang="English", tone="Normal", glossary=""):
     elif task == "improve":
         sys_msg = "Editörsün. Metni düzelt. Sadece düzeltilmiş metni ver. Açıklama yapma."
     elif task == "summarize":
-        sys_msg = f"Analistsin. Metni {target_lang} dilinde özetle."
+        # GÜNCELLENEN KISIM: Çeviri vurgusu yapıldı
+        sys_msg = f"""
+        Sen bir analiz uzmanısın.
+        GÖREV: Verilen metni analiz et ve {target_lang} diline çevirerek özetle.
+        ÇIKTI FORMATI:
+        1. 📋 Genel Özet ({target_lang})
+        2. 💡 Önemli Noktalar ({target_lang})
+        NOT: Çıktı tamamen {target_lang} dilinde olmalı.
+        """
 
     try:
         res = client.chat.completions.create(
@@ -119,13 +127,12 @@ def generate_diff(original, corrected):
             html.append(token[2:])
     return " ".join(html)
 
-# --- DÜZELTİLEN FONKSİYON BURASI ---
-def create_audio(text, lang_name, speed=False): # speed parametresi eklendi
+def create_audio(text, lang_name, speed=False):
     code_map = {"Türkçe": "tr", "İngilizce": "en", "Almanca": "de", "Fransızca": "fr", "Español": "es", "Rusça": "ru", "Arapça": "ar", "Çince": "zh"}
     lang_code = code_map.get(lang_name, "en")
     try:
         fp = io.BytesIO()
-        gTTS(text=text, lang=lang_code, slow=speed).write_to_fp(fp) # speed buraya aktarılıyor
+        gTTS(text=text, lang=lang_code, slow=speed).write_to_fp(fp)
         return fp.getvalue()
     except: return None
 
@@ -150,10 +157,9 @@ def local_read_web(url):
 
 with st.sidebar:
     st.title("LinguaFlow")
-    st.caption("Academy Edition v26.1")
+    st.caption("Academy Edition v26.2")
     
     st.markdown("### ⚙️ Ayarlar")
-    # Hız Ayarı (Boolean'a çevriliyor)
     speed_opt = st.select_slider("Konuşma Hızı", options=["Yavaş", "Normal"], value="Normal")
     is_slow = True if speed_opt == "Yavaş" else False
     
@@ -170,7 +176,7 @@ with st.sidebar:
 st.markdown('<div class="header-logo">LinguaFlow Academy</div>', unsafe_allow_html=True)
 
 tab_text, tab_practice, tab_voice, tab_files, tab_web = st.tabs(["📝 Metin & Analiz", "🧠 Alıştırma", "🎙️ Ses", "📂 Dosya", "🔗 Web"])
-LANG_OPTIONS = ["English", "Türkçe", "Deutsch", "Français", "Español", "Italiano", "Русский", "العربية", "中文"]
+LANG_OPTIONS = ["Türkçe", "English", "Deutsch", "Français", "Español", "Italiano", "Русский", "العربية", "中文"]
 
 # --- 1. METİN ---
 with tab_text:
@@ -212,7 +218,6 @@ with tab_text:
                 st.write("")
                 ca, cb = st.columns([1, 4])
                 with ca:
-                    # DÜZELTİLEN ÇAĞRI: is_slow artık tanımlı
                     aud = create_audio(res, target_lang, is_slow)
                     if aud: st.audio(aud, format="audio/mp3")
                 with cb: st.code(res, language=None)
@@ -220,7 +225,7 @@ with tab_text:
 # --- 2. ALIŞTIRMA ---
 with tab_practice:
     if len(st.session_state.history) < 3:
-        st.info("🧠 Alıştırma yapmak için önce 'Metin' sekmesinde en az 3 çeviri yapmalısınız.")
+        st.info("🧠 Alıştırma için 'Metin' sekmesinde en az 3 çeviri yapın.")
     else:
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
@@ -232,11 +237,9 @@ with tab_practice:
             if st.session_state.flashcard_idx >= 0:
                 card = st.session_state.history[st.session_state.flashcard_idx]
                 st.markdown(f"<div class='flashcard'>{card['src']}</div>", unsafe_allow_html=True)
-                
                 if st.button("👁️ Cevabı Göster"):
                     st.session_state.show_answer = True
                     st.rerun()
-                
                 if st.session_state.show_answer:
                     st.markdown(f"<div class='flashcard flashcard-reveal'>{card['trg']}</div>", unsafe_allow_html=True)
 
@@ -244,7 +247,6 @@ with tab_practice:
 with tab_voice:
     mode = st.radio("Mod:", ["🗣️ Sohbet", "🎙️ Konferans"], horizontal=True)
     st.divider()
-    
     if "Sohbet" in mode:
         c1, c2 = st.columns(2)
         with c1:
@@ -265,8 +267,7 @@ with tab_voice:
                 st.info(f"{txt} -> {res}")
                 aud = create_audio(res, "Türkçe", is_slow)
                 if aud: st.audio(aud, format="audio/mp3", autoplay=True)
-
-    else: # Konferans
+    else:
         c1, c2 = st.columns([1, 3])
         with c1:
             ac = audio_recorder(text="BAŞLAT / DURDUR", icon_size="2x", recording_color="#dc2626", pause_threshold=20.0)
@@ -293,16 +294,21 @@ with tab_files:
                     st.download_button("İndir", res, "sonuc.txt")
                 else: st.error("Hata.")
 
-# --- 5. WEB ---
+# --- 5. WEB (DİL SEÇİMİ EKLENDİ) ---
 with tab_web:
-    url = st.text_input("URL")
-    if st.button("Analiz") and url:
-        with st.spinner("..."):
+    c_url, c_lang = st.columns([3, 1])
+    with c_url:
+        url = st.text_input("URL", placeholder="https://...")
+    with c_lang:
+        web_lang = st.selectbox("Rapor Dili", LANG_OPTIONS, key="w_lang") # Dil Seçimi Eklendi
+
+    if st.button("Siteyi Analiz Et") and url:
+        with st.spinner("Site okunuyor ve çevriliyor..."):
             txt = local_read_web(url)
             if txt:
-                res = ai_engine(txt, "summarize", target_lang)
+                res = ai_engine(txt, "summarize", target_lang=web_lang) # Seçili dil gönderiliyor
                 st.markdown(f"<div class='result-box'>{res}</div>", unsafe_allow_html=True)
                 st.download_button("İndir", res, "web.txt")
-            else: st.error("Hata.")
+            else: st.error("Siteye erişilemedi (Güvenlik duvarı olabilir).")
 
 st.divider()
