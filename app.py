@@ -6,7 +6,7 @@ import io
 import requests
 from bs4 import BeautifulSoup
 import PyPDF2
-import base64 # Resimleri kodlamak için
+import base64
 
 # --- 1. GENEL AYARLAR ---
 st.set_page_config(page_title="AI Tercüman Pro", page_icon="🌐", layout="wide")
@@ -59,21 +59,18 @@ def get_analysis(text, target_lang):
     res = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}])
     return res.choices[0].message.content
 
-# GÖRSEL ANALİZ FONKSİYONU (YENİ!)
+# GÖRSEL ANALİZ (GÜNCELLENEN KISIM: MODEL İSMİ DEĞİŞTİ)
 def analyze_image(image_bytes, target_lang):
-    # Resmi base64 formatına çevir (Groq böyle anlar)
     base64_image = base64.b64encode(image_bytes).decode('utf-8')
-    
     prompt = f"""
     Bu görseldeki yazıları veya nesneleri analiz et.
     GÖREV:
     1. Eğer görselde YAZI varsa: O yazıyı {target_lang} diline çevir.
     2. Eğer görselde NESNE varsa: Ne olduğunu {target_lang} dilinde anlat.
     """
-    
     try:
         res = client.chat.completions.create(
-            model="llama-3.2-11b-vision-preview", # GÖRSEL MODELİ
+            model="llama-3.2-90b-vision-preview", # <-- GÜNCELLENEN MODEL (Daha güçlü)
             messages=[
                 {
                     "role": "user",
@@ -111,7 +108,6 @@ def show_home():
             
     st.markdown('<div class="main-header">🌐 AI Tercüman Pro</div>', unsafe_allow_html=True)
     
-    # 6 KARTLI MENÜ (3 Sütun x 2 Satır)
     c1, c2, c3 = st.columns(3)
     c4, c5, c6 = st.columns(3)
     
@@ -130,7 +126,7 @@ def show_home():
         if st.button(titles[3], use_container_width=True): st.session_state.page = "web"; st.rerun()
     with c5: 
         if st.button(titles[4], use_container_width=True): st.session_state.page = "doc"; st.rerun()
-    with c6: # YENİ MOD
+    with c6:
         if st.button(titles[5], use_container_width=True): st.session_state.page = "vision"; st.rerun()
 
 # --- MOD 1: SOHBET ---
@@ -197,7 +193,7 @@ def show_conf():
             
     if "summary" in st.session_state:
         st.success("📝 Rapor"); st.write(st.session_state.summary)
-        if st.button("Kapat"): del st.session_state.summary; st.rerun()
+        if st.button("Raporu Kapat"): del st.session_state.summary; st.rerun()
             
     st.divider()
     for msg in reversed(st.session_state.chat_history):
@@ -255,7 +251,7 @@ def show_doc():
             with st.spinner("Okunuyor..."):
                 st.markdown(get_analysis(doc_text[:10000], target_lang))
 
-# --- MOD 6: GÖRSEL ÇEVİRİ (YENİ!) ---
+# --- MOD 6: GÖRSEL ---
 def show_vision():
     with st.sidebar:
         if st.button("⬅️ Menüye Dön"): st.session_state.page = "home"; st.rerun()
@@ -265,26 +261,18 @@ def show_vision():
     st.markdown("### 📸 Görsel/Kamera Çeviri")
     st.info("Bir tabela, menü veya herhangi bir resim yükleyin/çekin.")
     
-    # Kamera veya Dosya Seçimi
     cam_pic = st.camera_input("Fotoğraf Çek")
     file_pic = st.file_uploader("Veya Galeriden Yükle", type=['jpg', 'png', 'jpeg'])
     
     final_pic = cam_pic if cam_pic else file_pic
     
     if final_pic:
-        st.image(final_pic, caption="Seçilen Görsel", width=300)
-        if st.button("🖼️ Görseli Tara ve Çevir", type="primary"):
-            with st.spinner("Yapay zeka görseli inceliyor..."):
+        st.image(final_pic, caption="Görsel", width=300)
+        if st.button("🖼️ Çevir", type="primary"):
+            with st.spinner("Görsel analiz ediliyor..."):
                 result = analyze_image(final_pic.getvalue(), target_lang)
-                
                 st.success("✅ Sonuç:")
-                st.markdown(f"""
-                <div style="background-color:#f9fbe7; padding:20px; border-radius:10px; border:1px solid #cddc39;">
-                    {result}
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Seslendirme opsiyonu
+                st.markdown(f"<div style='background-color:#f9fbe7; padding:20px; border-radius:10px;'>{result}</div>", unsafe_allow_html=True)
                 audio = create_voice(result[:200], "tr")
                 if audio: st.audio(audio, format="audio/mp3")
 
