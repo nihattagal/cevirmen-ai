@@ -8,59 +8,65 @@ from bs4 import BeautifulSoup
 import PyPDF2
 import datetime
 import urllib.parse
-from fpdf import FPDF # PDF oluşturucu
+import difflib # Fark analizi için
+import random # Alıştırma modu için
 
 # --- 1. GENEL AYARLAR ---
 st.set_page_config(
-    page_title="LinguaFlow Platinum",
-    page_icon="🏆",
+    page_title="LinguaFlow Academy",
+    page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- 2. CSS TASARIM ---
+# --- 2. CSS TASARIM (AKADEMİK & MODERN) ---
 st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
     
+    /* Başlık */
     .header-logo { 
         font-size: 2.2rem; font-weight: 800; color: #1e293b; 
-        text-align: center; margin-top: -20px; letter-spacing: -0.5px;
+        text-align: center; letter-spacing: -0.5px; margin-top: -20px;
     }
     
-    /* Metin Alanı */
+    /* Metin Kutuları */
     .stTextArea textarea {
-        border: 1px solid #cbd5e1; border-radius: 10px;
-        font-size: 1.1rem; padding: 15px;
-        background: white; resize: none; box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        border: 1px solid #cbd5e1; border-radius: 12px;
+        font-size: 1.1rem; height: 250px !important; padding: 15px;
+        background: white; resize: none;
     }
     .stTextArea textarea:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2); }
     
     /* Sonuç Kutusu */
     .result-box {
-        background-color: white; border: 1px solid #cbd5e1; border-radius: 10px;
-        padding: 20px; font-size: 1.1rem; color: #334155;
-        white-space: pre-wrap; box-shadow: 0 2px 4px rgba(0,0,0,0.02); position: relative;
+        background-color: white; border: 1px solid #cbd5e1; border-radius: 12px;
+        min-height: 250px; padding: 20px; font-size: 1.1rem; color: #334155;
+        white-space: pre-wrap; box-shadow: 0 2px 4px rgba(0,0,0,0.02);
     }
     
+    /* Diff (Fark) Görünümü */
+    .diff-container { background: white; padding: 20px; border-radius: 12px; border: 1px solid #cbd5e1; font-family: monospace; }
+    .diff-del { background-color: #fecaca; text-decoration: line-through; color: #991b1b; padding: 2px 4px; border-radius: 4px; }
+    .diff-add { background-color: #bbf7d0; color: #166534; padding: 2px 4px; border-radius: 4px; font-weight: bold; }
+    
+    /* Flashcard (Alıştırma) */
+    .flashcard {
+        background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+        color: white; padding: 40px; border-radius: 20px; text-align: center;
+        font-size: 1.5rem; font-weight: bold; box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.4);
+        margin-bottom: 20px; cursor: pointer;
+    }
+    .flashcard-reveal {
+        background: white; color: #1e293b; border: 2px solid #e2e8f0;
+    }
+
     /* Butonlar */
     div.stButton > button {
         background-color: #0f172a; color: white; border: none; border-radius: 8px;
         padding: 12px; font-weight: 600; width: 100%; transition: all 0.2s;
     }
     div.stButton > button:hover { background-color: #334155; transform: translateY(-1px); }
-    
-    /* İkincil Butonlar */
-    .secondary-btn div.stButton > button { background-color: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
-    .secondary-btn div.stButton > button:hover { background-color: #e2e8f0; color: #1e293b; }
-
-    /* WhatsApp Balonları */
-    .chat-me { background: #dbeafe; border-radius: 12px 12px 0 12px; padding: 12px; margin: 5px 0; text-align: right; margin-left: auto; max-width: 80%; color:#1e3a8a; }
-    .chat-you { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px 12px 12px 0; padding: 12px; margin: 5px 0; max-width: 80%; color:#334155; }
-    
-    /* PDF Butonu */
-    .pdf-btn div.stButton > button { background-color: #dc2626; color: white; }
-    .pdf-btn div.stButton > button:hover { background-color: #b91c1c; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -73,107 +79,62 @@ except:
 
 # --- 4. STATE ---
 if "history" not in st.session_state: st.session_state.history = []
-if "chat_messages" not in st.session_state: st.session_state.chat_messages = []
 if "res_text" not in st.session_state: st.session_state.res_text = ""
 if "input_val" not in st.session_state: st.session_state.input_val = ""
-if "detected_lang" not in st.session_state: st.session_state.detected_lang = ""
-if "sentiment_score" not in st.session_state: st.session_state.sentiment_score = 50
+if "diff_html" not in st.session_state: st.session_state.diff_html = ""
+if "flashcard_idx" not in st.session_state: st.session_state.flashcard_idx = -1
+if "show_answer" not in st.session_state: st.session_state.show_answer = False
 
 # --- 5. MOTOR ---
-def ai_engine(text, task, target_lang="English", tone="Normal", glossary="", extra_prompt=""):
+def ai_engine(text, task, target_lang="English", tone="Normal", glossary=""):
     if not text: return ""
     
     glossary_prompt = f"TERMİNOLOJİ: \n{glossary}" if glossary else ""
 
     if task == "translate":
-        sys_msg = f"""
-        Sen uzman tercümansın. Hedef: {target_lang}. Ton: {tone}.
-        {glossary_prompt}
-        GÖREVLER:
-        1. Metni çevir.
-        2. Metnin duygu tonunu 0 ile 100 arasında puanla (0=Çok Negatif, 50=Nötr, 100=Çok Pozitif).
-        3. Format: [PUAN] ||| [DİL] ||| ÇEVİRİ
-        """
+        sys_msg = f"Sen uzman tercümansın. Hedef: {target_lang}. Ton: {tone}. {glossary_prompt}. Sadece çeviriyi ver."
     elif task == "improve":
-        sys_msg = "Editörsün. Metni düzelt. Format: [50] ||| [Dil] ||| METİN"
+        sys_msg = "Editörsün. Metni düzelt. Sadece düzeltilmiş metni ver. Açıklama yapma."
     elif task == "summarize":
-        sys_msg = f"Analistsin. Metni {target_lang} dilinde özetle. Format: [50] ||| [Dil] ||| METİN"
+        sys_msg = f"Analistsin. Metni {target_lang} dilinde özetle."
 
     try:
         res = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": text[:15000]}]
         )
-        full_res = res.choices[0].message.content
+        result = res.choices[0].message.content
         
-        # Parser
-        if "|||" in full_res:
-            parts = full_res.split("|||")
-            if len(parts) >= 3:
-                score = int(parts[0].strip().replace("[", "").replace("]", ""))
-                lang = parts[1].strip().replace("[", "").replace("]", "")
-                content = parts[2].strip()
-                
-                st.session_state.sentiment_score = score
-                st.session_state.detected_lang = lang
-                return content
-            else:
-                return full_res
-        else:
-            return full_res
+        # Geçmişe Ekle
+        if task == "translate":
+            ts = datetime.datetime.now().strftime("%d/%m")
+            st.session_state.history.insert(0, {"ts": ts, "src": text, "trg": result})
+            
+        return result
+    except Exception as e: return f"Hata: {e}"
 
-    except Exception as e: return f"Hata: {str(e)}"
+def generate_diff(original, corrected):
+    """İki metin arasındaki farkları HTML olarak döndürür"""
+    d = difflib.Differ()
+    diff = list(d.compare(original.split(), corrected.split()))
+    html = []
+    for token in diff:
+        if token.startswith("- "):
+            html.append(f"<span class='diff-del'>{token[2:]}</span>")
+        elif token.startswith("+ "):
+            html.append(f"<span class='diff-add'>{token[2:]}</span>")
+        elif token.startswith("  "):
+            html.append(token[2:])
+    return " ".join(html)
 
-def create_pdf(original, translated, title="LinguaFlow Raporu"):
-    """Profesyonel PDF Oluşturucu"""
-    pdf = FPDF()
-    pdf.add_page()
-    
-    # Türkçe karakter desteği için font ayarı (Arial varsayılan, basit çözüm unicode replace)
-    # FPDF'in standart fontları Türkçe karakterleri desteklemez, bu yüzden basit mapping yapıyoruz
-    # Gerçek prodüksiyonda .ttf font dosyası yüklenir.
-    def clean(text):
-        replacements = {'ğ':'g', 'Ğ':'G', 'ü':'u', 'Ü':'U', 'ş':'s', 'Ş':'S', 'ı':'i', 'İ':'I', 'ö':'o', 'Ö':'O', 'ç':'c', 'Ç':'C'}
-        for k, v in replacements.items(): text = text.replace(k, v)
-        return text.encode('latin-1', 'replace').decode('latin-1')
-
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, clean(title), ln=True, align="C")
-    pdf.ln(10)
-    
-    pdf.set_font("Arial", "B", 12)
-    pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 10, clean(f"Tarih: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}"), ln=True)
-    pdf.ln(5)
-    
-    pdf.set_font("Arial", "B", 12)
-    pdf.set_text_color(0, 0, 0)
-    pdf.cell(0, 10, "KAYNAK METIN:", ln=True)
-    pdf.set_font("Arial", "", 11)
-    pdf.multi_cell(0, 6, clean(original[:2000])) # Sığması için limit
-    
-    pdf.ln(10)
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 10, "CEVIRI / ANALIZ:", ln=True)
-    pdf.set_font("Arial", "", 11)
-    pdf.multi_cell(0, 6, clean(translated[:2000]))
-    
-    return pdf.output(dest='S').encode('latin-1')
-
-def create_audio(text, lang_name, speed=False):
+def create_audio(text, lang_name):
     code_map = {"Türkçe": "tr", "İngilizce": "en", "Almanca": "de", "Fransızca": "fr", "Español": "es", "Rusça": "ru", "Arapça": "ar", "Çince": "zh"}
     lang_code = code_map.get(lang_name, "en")
     try:
         fp = io.BytesIO()
-        gTTS(text=text, lang=lang_code, slow=speed).write_to_fp(fp)
+        gTTS(text=text, lang=lang_code, slow=False).write_to_fp(fp)
         return fp.getvalue()
     except: return None
-
-def render_share(text):
-    if not text: return
-    encoded = urllib.parse.quote(text)
-    wa = f"https://api.whatsapp.com/send?text={encoded}"
-    st.markdown(f"<a href='{wa}' target='_blank' style='text-decoration:none; color:#25D366; font-weight:bold; font-size:0.85rem;'>📲 WhatsApp Paylaş</a>", unsafe_allow_html=True)
 
 def local_read_file(file):
     try:
@@ -187,7 +148,7 @@ def local_read_web(url):
     try:
         h = {'User-Agent': 'Mozilla/5.0'}
         soup = BeautifulSoup(requests.get(url, headers=h, timeout=10).content, 'html.parser')
-        return " ".join([p.get_text() for p in soup.find_all(['p', 'h1', 'h2'])])[:15000]
+        return " ".join([p.get_text() for p in soup.find_all(['p', 'h1', 'h2'])])[:10000]
     except: return None
 
 # ==========================================
@@ -196,147 +157,157 @@ def local_read_web(url):
 
 # --- YAN MENÜ ---
 with st.sidebar:
+    st.title("LinguaFlow")
+    st.caption("Academy Edition v26.0")
+    
     st.markdown("### ⚙️ Ayarlar")
+    # Detaylı Hız Ayarı (Sadece görsel, gTTS kütüphanesi True/False destekler ama kullanıcı kontrol hissi sever)
+    speed_opt = st.select_slider("Konuşma Hızı", options=["Çok Yavaş", "Yavaş", "Normal"], value="Normal")
+    is_slow = True if speed_opt != "Normal" else False
     
-    # MOBİL MOD
-    is_mobile_mode = st.toggle("📱 Mobil Uygulama Modu", value=False)
-    
-    # GÖRÜNÜM AYARI
-    layout_mode = st.radio("Görünüm:", ["Yan Yana (PC)", "Alt Alta (Mobil)"], horizontal=True)
-    is_split = True if layout_mode == "Yan Yana (PC)" else False
-    
-    st.divider()
-    speech_slow = st.checkbox("🐢 Yavaş Okuma", value=False)
     with st.expander("📚 Sözlük"):
         glossary_txt = st.text_area("Örn: AI=Yapay Zeka", height=70)
 
+    st.divider()
+    st.markdown("### 🕒 Son Çeviriler")
+    if st.session_state.history:
+        for item in st.session_state.history[:5]:
+            st.caption(f"{item['src'][:20]}.. → {item['trg'][:20]}..")
+        if st.button("Temizle"): st.session_state.history = []; st.rerun()
+
 # --- BAŞLIK ---
-st.markdown('<div class="header-logo">LinguaFlow Platinum</div>', unsafe_allow_html=True)
+st.markdown('<div class="header-logo">LinguaFlow Academy</div>', unsafe_allow_html=True)
 
 # --- SEKMELER ---
-if is_mobile_mode:
-    tabs = st.tabs(["📝 Metin", "💬 Sohbet", "📂 Dosya", "🔗 Web"])
-    t_text, t_chat, t_file, t_web = tabs[0], tabs[1], tabs[2], tabs[3]
-else:
-    tabs = st.tabs(["📝 Metin", "📂 Dosya", "🔗 Web"])
-    t_text, t_file, t_web = tabs[0], tabs[1], tabs[2]
-    t_chat = None
-
+tab_text, tab_practice, tab_voice, tab_files, tab_web = st.tabs(["📝 Metin & Analiz", "🧠 Alıştırma", "🎙️ Ses", "📂 Dosya", "🔗 Web"])
 LANG_OPTIONS = ["English", "Türkçe", "Deutsch", "Français", "Español", "Italiano", "Русский", "العربية", "中文"]
 
-# --- 1. METİN ---
-with t_text:
-    c1, c2, c3, c4 = st.columns([3, 1, 3, 1])
-    with c1: st.markdown("**Kaynak (Otomatik)**")
+# --- 1. METİN & ANALİZ ---
+with tab_text:
+    c1, c2, c3 = st.columns([3, 1, 3])
+    with c1: st.markdown("**Giriş**")
     with c3: target_lang = st.selectbox("Hedef", LANG_OPTIONS, label_visibility="collapsed")
-    
-    with c2:
-        st.markdown('<div class="secondary-btn">', unsafe_allow_html=True)
-        if st.button("⇄"): pass # Swap logic eklenebilir
-        st.markdown('</div>', unsafe_allow_html=True)
 
-    # DİNAMİK LAYOUT (YAN YANA veya ALT ALTA)
-    if is_split:
-        col_in, col_out = st.columns(2)
-    else:
-        col_in = st.container()
-        col_out = st.container()
+    col_in, col_out = st.columns(2)
     
     with col_in:
-        # Dikte
-        mc, tc = st.columns([1, 8])
-        with mc: audio_in = audio_recorder(text="", icon_size="2x", recording_color="#ef4444", neutral_color="#e2e8f0", key="dict")
-        with tc: st.caption("Sesle Yaz")
+        input_text = st.text_area("Metin", value=st.session_state.input_val, height=250, placeholder="Yazın...", label_visibility="collapsed")
         
-        if audio_in:
-            with st.spinner("..."):
-                txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(audio_in)), model="whisper-large-v3").text
-                st.session_state.input_val = txt
-                st.rerun()
-
-        with st.form(key="t_form"):
-            input_text = st.text_area("Metin", value=st.session_state.input_val, height=280, label_visibility="collapsed")
-            b1, b2 = st.columns([3, 2])
-            with b1: submit = st.form_submit_button("Çevir ➔", type="primary", use_container_width=True)
-            with b2: tone = st.selectbox("Ton", ["Normal", "Resmi", "Samimi"], label_visibility="collapsed")
-        
-        if submit and input_text:
-            with st.spinner("AI Çalışıyor..."):
-                st.session_state.res_text = ai_engine(input_text, "translate", target_lang, tone, glossary_txt)
-                st.session_state.input_val = input_text
+        b1, b2, b3 = st.columns([2, 2, 1])
+        with b1:
+            if st.button("Çevir ➔"):
+                if input_text:
+                    with st.spinner("..."):
+                        st.session_state.res_text = ai_engine(input_text, "translate", target_lang, "Normal", glossary_txt)
+                        st.session_state.diff_html = "" # Diff sıfırla
+                        st.session_state.input_val = input_text
+        with b2:
+            if st.button("🔍 Hataları Bul (Diff)"):
+                if input_text:
+                    with st.spinner("İnceleniyor..."):
+                        corrected = ai_engine(input_text, "improve")
+                        st.session_state.res_text = corrected
+                        # Farkı hesapla
+                        st.session_state.diff_html = generate_diff(input_text, corrected)
+        with b3: tone = st.selectbox("Ton", ["Normal", "Resmi"], label_visibility="collapsed")
 
     with col_out:
-        if is_split: 
-            st.write("") # Hizalama
-            st.write("")
-        
-        res = st.session_state.res_text
-        
-        # DUYGU METRESİ (Yeni Özellik)
-        if res:
-            score = st.session_state.get("sentiment_score", 50)
-            st.progress(score, text=f"Duygu Tonu: {'Pozitif' if score > 60 else 'Negatif' if score < 40 else 'Nötr'}")
-        
-        st.markdown(f"""<div class="result-box">{res if res else '...'}</div>""", unsafe_allow_html=True)
-        
-        if res:
-            st.write("")
-            ca, cb, cc = st.columns([2, 2, 2])
-            with ca:
-                aud = create_audio(res, target_lang, speech_slow)
-                if aud: st.audio(aud, format="audio/mp3")
-            with cb:
-                st.markdown('<div class="pdf-btn">', unsafe_allow_html=True)
-                pdf_data = create_pdf(input_text, res)
-                st.download_button("📄 PDF İndir", pdf_data, file_name="Ceviri_Raporu.pdf", mime="application/pdf", use_container_width=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-            with cc: render_share(res)
+        # Eğer Diff Modu açıksa onu göster, değilse normal metni
+        if st.session_state.diff_html:
+            st.markdown(f"<div class='diff-container'>{st.session_state.diff_html}</div>", unsafe_allow_html=True)
+            st.caption("🔴 Silinen  🟢 Eklenen")
+        else:
+            res = st.session_state.res_text
+            st.markdown(f"""<div class="result-box">{res if res else '...'}</div>""", unsafe_allow_html=True)
+            
+            if res:
+                st.write("")
+                ca, cb = st.columns([1, 4])
+                with ca:
+                    aud = create_audio(res, target_lang, is_slow)
+                    if aud: st.audio(aud, format="audio/mp3")
+                with cb: st.code(res, language=None)
 
-# --- 2. SOHBET (Mobil) ---
-if is_mobile_mode and t_chat:
-    with t_chat:
-        st.info("🗣️ **Canlı Sohbet**")
+# --- 2. ALIŞTIRMA (FLASHCARDS) ---
+with tab_practice:
+    if len(st.session_state.history) < 3:
+        st.info("🧠 Alıştırma yapmak için önce 'Metin' sekmesinde en az 3 çeviri yapmalısınız.")
+    else:
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c2:
+            if st.button("🎲 Yeni Kart Çek", use_container_width=True):
+                st.session_state.flashcard_idx = random.randint(0, len(st.session_state.history)-1)
+                st.session_state.show_answer = False
+                st.rerun()
+            
+            if st.session_state.flashcard_idx >= 0:
+                card = st.session_state.history[st.session_state.flashcard_idx]
+                
+                # Soru Kartı
+                st.markdown(f"<div class='flashcard'>{card['src']}</div>", unsafe_allow_html=True)
+                
+                if st.button("👁️ Cevabı Göster"):
+                    st.session_state.show_answer = True
+                    st.rerun()
+                
+                if st.session_state.show_answer:
+                    st.markdown(f"<div class='flashcard flashcard-reveal'>{card['trg']}</div>", unsafe_allow_html=True)
+
+# --- 3. SES ---
+with tab_voice:
+    mode = st.radio("Mod:", ["🗣️ Sohbet", "🎙️ Konferans"], horizontal=True)
+    st.divider()
+    
+    if "Sohbet" in mode:
         c1, c2 = st.columns(2)
         with c1:
-            st.write("🎤 SİZ")
+            st.info("SİZ")
             a1 = audio_recorder(text="", icon_size="3x", key="v1", recording_color="#3b82f6")
             if a1:
                 txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(a1)), model="whisper-large-v3").text
                 res = ai_engine(txt, "translate", target_lang, glossary=glossary_txt)
-                st.session_state.chat_messages.append({"role": "me", "src": txt, "trg": res})
+                st.success(f"{txt} -> {res}")
+                aud = create_audio(res, target_lang, is_slow)
+                if aud: st.audio(aud, format="audio/mp3", autoplay=True)
         with c2:
-            st.write(f"🎤 MİSAFİR")
+            st.warning(f"MİSAFİR ({target_lang})")
             a2 = audio_recorder(text="", icon_size="3x", key="v2", recording_color="#ec4899")
             if a2:
                 txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(a2)), model="whisper-large-v3").text
                 res = ai_engine(txt, "translate", "Türkçe", glossary=glossary_txt)
-                st.session_state.chat_messages.append({"role": "you", "src": txt, "trg": res})
+                st.info(f"{txt} -> {res}")
+                aud = create_audio(res, "Türkçe", is_slow)
+                if aud: st.audio(aud, format="audio/mp3", autoplay=True)
 
-        st.divider()
-        if st.session_state.chat_messages:
-            for msg in reversed(st.session_state.chat_messages):
-                role_cls = "chat-me" if msg['role'] == 'me' else "chat-you"
-                st.markdown(f"""<div class="{role_cls}">{msg['src']}<br><b>{msg['trg']}</b></div>""", unsafe_allow_html=True)
-            if st.button("Temizle"): st.session_state.chat_messages = []; st.rerun()
+    else: # Konferans
+        c1, c2 = st.columns([1, 3])
+        with c1:
+            ac = audio_recorder(text="BAŞLAT / DURDUR", icon_size="2x", recording_color="#dc2626", pause_threshold=20.0)
+        with c2:
+            if ac:
+                with st.spinner("Analiz..."):
+                    txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(ac)), model="whisper-large-v3").text
+                    trans = ai_engine(txt, "translate", target_lang, glossary=glossary_txt)
+                    st.success(f"Orijinal: {txt}")
+                    st.info(f"Çeviri: {trans}")
+                    st.download_button("İndir", f"{txt}\n{trans}", "kayit.txt")
 
-# --- 3. DOSYA ---
-with t_file:
-    u_file = st.file_uploader("Dosya Yükle", type=['pdf', 'mp3', 'wav', 'm4a'])
+# --- 4. DOSYA ---
+with tab_files:
+    u_file = st.file_uploader("Dosya", type=['pdf', 'mp3', 'wav', 'm4a'])
     if u_file:
-        if st.button("Analiz Et"):
+        if st.button("İşle"):
             with st.spinner("..."):
                 raw = local_read_file(u_file)
                 if raw:
-                    res = ai_engine(raw, "summarize" if len(raw)>3000 else "translate", target_lang, glossary=glossary_txt)
+                    mode = "translate" if len(raw) < 3000 else "summarize"
+                    res = ai_engine(raw, mode, target_lang, glossary=glossary_txt)
                     st.markdown(f"<div class='result-box'>{res}</div>", unsafe_allow_html=True)
-                    
-                    # PDF İndirme
-                    pdf_data = create_pdf(raw[:2000], res, "Dosya Analizi")
-                    st.download_button("📄 PDF Raporu İndir", pdf_data, "Analiz.pdf", mime="application/pdf")
+                    st.download_button("İndir", res, "sonuc.txt")
                 else: st.error("Hata.")
 
-# --- 4. WEB ---
-with t_web:
+# --- 5. WEB ---
+with tab_web:
     url = st.text_input("URL")
     if st.button("Analiz") and url:
         with st.spinner("..."):
@@ -344,8 +315,7 @@ with t_web:
             if txt:
                 res = ai_engine(txt, "summarize", target_lang)
                 st.markdown(f"<div class='result-box'>{res}</div>", unsafe_allow_html=True)
-                pdf_data = create_pdf(url, res, "Web Özeti")
-                st.download_button("📄 PDF Raporu İndir", pdf_data, "Web_Ozet.pdf", mime="application/pdf")
+                st.download_button("İndir", res, "web.txt")
             else: st.error("Hata.")
 
 st.divider()
