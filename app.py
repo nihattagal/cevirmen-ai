@@ -3,9 +3,8 @@ from groq import Groq
 from audio_recorder_streamlit import audio_recorder
 from gtts import gTTS
 import io
-import random
-import time # Zaman damgası için (Önbelleği kırmak adına)
-import urllib.parse # Linkleri düzeltmek için (boşlukları %20 yapar)
+import uuid # DÜNYADA TEK (Benzersiz) kod üretmek için
+import urllib.parse
 
 st.set_page_config(page_title="AI Çevirmen", layout="centered")
 
@@ -35,13 +34,13 @@ with st.sidebar:
     lang_codes = {"İngilizce": "en", "Türkçe": "tr", "Almanca": "de", "İspanyolca": "es", "Fransızca": "fr"}
     target_lang_code = lang_codes[target_lang_name]
 
-    if st.button("🗑️ Sohbeti ve Önbelleği Temizle"):
+    if st.button("🗑️ Temizle"):
         st.session_state.chat_history = []
-        st.cache_data.clear() # Derin temizlik
+        st.cache_data.clear()
         st.rerun()
 
 # --- MİKROFON ---
-st.write("Mikrofona basıp konuşun (Örn: 'Deniz kenarında taş bir ev'):")
+st.write("Mikrofona basıp konuşun (Örn: 'Kadıköy çarşıda geziyorum'):")
 audio_bytes = audio_recorder(
     text="",
     recording_color="#e8b62c",
@@ -65,7 +64,7 @@ if audio_bytes:
                 response_format="text"
             )
             
-            # 3. Llama (Çevirme + DETAYLI Görsel Tespiti)
+            # 3. Llama (Çevirme + Görsel Tespiti)
             system_prompt = f"""
             Sen bir çevirmensin. 
             Mod: {user_mode}. 
@@ -73,11 +72,11 @@ if audio_bytes:
             
             GÖREVİN:
             1. Metni hedef dile çevir.
-            2. Metin içindeki ana nesneyi SIFATLARIYLA (Renk, Boyut, Şekil, Ortam) BERABER İngilizce olarak ayıkla.
+            2. Metin içinde SOMUT bir nesne veya ortam varsa onu detaylı İngilizce kelimelerle tanımla.
             
             ÖNEMLİ: 
-            - 'Mavi gömlek' denirse 'blue shirt' yaz.
-            - 'Deniz kenarı' denirse 'seaside beach ocean' yaz.
+            - 'Kadıköy' veya 'Çarşı' geçerse -> 'crowded city street market istanbul shopping' gibi betimle.
+            - 'Mavi gömlek' geçerse -> 'blue shirt fabric fashion' gibi betimle.
             
             CEVAP FORMATI (Buna uy):
             Çevrilmiş Metin ||| Görsel_Tanımı_Ingilizce
@@ -99,17 +98,13 @@ if audio_bytes:
                 translation = parts[0].strip()
                 image_keyword = parts[1].strip()
                 
-                # --- URL OLUŞTURMA (ÖNEMLİ DÜZELTME) ---
-                # 1. Kelimedeki boşlukları %20 yap (blue shirt -> blue%20shirt)
+                # --- URL OLUŞTURMA (BENZERSİZ ID İLE) ---
                 safe_keyword = urllib.parse.quote(image_keyword)
                 
-                # 2. Rastgele sayı (Seed)
-                seed = random.randint(0, 999999)
+                # Rastgelelik yerine UUID kullanıyoruz (Kesin çözüm)
+                unique_id = str(uuid.uuid4())
                 
-                # 3. Zaman damgası (Tarayıcıyı kandırmak için)
-                timestamp = int(time.time())
-                
-                image_url = f"https://image.pollinations.ai/prompt/{safe_keyword}?nologo=true&seed={seed}&v={timestamp}"
+                image_url = f"https://image.pollinations.ai/prompt/{safe_keyword}?nologo=true&seed={unique_id}"
             else:
                 translation = full_response
                 image_url = None
@@ -127,23 +122,25 @@ if audio_bytes:
                 "ai": translation,
                 "audio": audio_io,
                 "image": image_url,
-                "keyword": image_keyword
+                "keyword": image_keyword,
+                "id": str(uuid.uuid4()) # Her mesajın kendi kimliği olsun
             })
             
         except Exception as e:
             st.error(f"Hata: {str(e)}")
 
 # --- EKRAN GÖRÜNÜMÜ ---
-for chat in reversed(st.session_state.chat_history):
+# enumerate kullanarak karışıklığı önlüyoruz
+for i, chat in enumerate(reversed(st.session_state.chat_history)):
     with st.container(border=True):
         col1, col2 = st.columns([2, 1]) 
         
         with col1:
             st.info(f"🎤 **Sen:** {chat['user']}")
             st.success(f"🤖 **Çeviri:** {chat['ai']}")
-            st.audio(chat['audio'], format="audio/mp3")
+            st.audio(chat['audio'], format="audio/mp3", key=f"audio_{i}") # Key ekledik
         
         with col2:
             if chat['image'] and show_images:
-                # Resmi göster
-                st.image(chat['image'], caption=f"AI Gözüyle: {chat['keyword']}", use_container_width=True)
+                # Key ekledik ki resimler karışmasın
+                st.image(chat['image'], caption=f"AI: {chat['keyword']}", use_container_width=True)
