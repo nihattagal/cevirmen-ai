@@ -5,220 +5,352 @@ from gtts import gTTS
 import io
 import datetime
 
-# --- SAYFA AYARLARI ---
+# --- 1. SAYFA YAPILANDIRMASI ---
 st.set_page_config(
-    page_title="AI Tercüman Ultimate",
-    page_icon="🌍",
-    layout="centered"
+    page_title="AI Super Translator",
+    page_icon="🌐",
+    layout="wide", # Geniş ekran modu
+    initial_sidebar_state="collapsed"
 )
 
-# --- CSS TASARIM ---
+# --- 2. CSS TASARIM (MODERN & KARTLAR) ---
 st.markdown("""
     <style>
+    /* Ana Başlık */
     .main-title {
-        text-align: center;
-        background: -webkit-linear-gradient(45deg, #FF416C, #FF4B2B);
+        font-size: 3.5rem;
+        font-weight: 800;
+        background: -webkit-linear-gradient(45deg, #FF0080, #7928CA);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        font-size: 3em; font-weight: bold;
+        text-align: center;
+        margin-bottom: 0px;
     }
-    .chat-box { padding: 15px; border-radius: 15px; margin-bottom: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-    .tr-msg { background-color: #e3f2fd; border-left: 5px solid #2196F3; } /* Mavi (Biz) */
-    .target-msg { background-color: #fbe9e7; border-right: 5px solid #FF5722; text-align: right; } /* Turuncu (Onlar) */
-    .stButton>button { border-radius: 20px; font-weight: bold; width: 100%; }
+    .subtitle {
+        text-align: center; font-size: 1.2rem; color: #666; margin-bottom: 30px;
+    }
+    
+    /* Kart Tasarımı (Menü Butonları) */
+    .card-container {
+        background-color: #f8f9fa;
+        padding: 20px;
+        border-radius: 15px;
+        border: 1px solid #ddd;
+        text-align: center;
+        transition: transform 0.2s;
+        height: 200px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+    }
+    .card-container:hover {
+        transform: scale(1.03);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        border-color: #7928CA;
+    }
+    .card-icon { font-size: 3rem; margin-bottom: 10px; }
+    .card-title { font-size: 1.5rem; font-weight: bold; color: #333; }
+    .card-desc { color: #666; font-size: 0.9rem; }
+    
+    /* Mesaj Balonları */
+    .msg-box { padding: 15px; border-radius: 15px; margin-bottom: 10px; }
+    .msg-user { background-color: #e3f2fd; border-left: 5px solid #2196F3; }
+    .msg-ai { background-color: #f3e5f5; border-right: 5px solid #9c27b0; text-align: right; }
+    
     </style>
 """, unsafe_allow_html=True)
 
-# --- BAŞLIK ---
-st.markdown('<div class="main-title">🌍 AI Tercüman Ultimate</div>', unsafe_allow_html=True)
+# --- 3. DİL PAKETİ (LOCALIZATION) ---
+# Uygulama diline göre metinler burada tutulur
+TEXTS = {
+    "Türkçe": {
+        "title": "AI Super Translator",
+        "subtitle": "Yapay Zeka Destekli Evrensel İletişim Aracı",
+        "mode_1_title": "Karşılıklı Sohbet",
+        "mode_1_desc": "Yabancı biriyle masa tenisi oynar gibi karşılıklı konuşun.",
+        "mode_2_title": "Simültane Konferans",
+        "mode_2_desc": "Toplantıları veya ortamı kesintisiz dinleyin ve çevirin.",
+        "mode_3_title": "Dosya Analizi",
+        "mode_3_desc": "Ses dosyalarını yükleyin, çevirin ve özetini çıkarın.",
+        "back": "⬅️ Ana Menüye Dön",
+        "mic_me": "BEN (Konuş)",
+        "mic_you": "MİSAFİR (Konuş)",
+        "translating": "Çevriliyor...",
+        "analyzing": "Analiz ediliyor...",
+        "summary_btn": "Toplantı Özeti Çıkar",
+        "clear_btn": "Temizle",
+        "download_btn": "İndir",
+        "settings": "Ayarlar",
+        "target_lang": "Hedef Dil",
+        "persona": "AI Karakteri",
+    },
+    "English": {
+        "title": "AI Super Translator",
+        "subtitle": "AI Powered Universal Communication Tool",
+        "mode_1_title": "Dual Chat",
+        "mode_1_desc": "Talk back-and-forth like playing ping-pong.",
+        "mode_2_title": "Live Conference",
+        "mode_2_desc": "Listen and translate meetings continuously.",
+        "mode_3_title": "File Analysis",
+        "mode_3_desc": "Upload audio files, translate and summarize.",
+        "back": "⬅️ Back to Menu",
+        "mic_me": "ME (Speak)",
+        "mic_you": "GUEST (Speak)",
+        "translating": "Translating...",
+        "analyzing": "Analyzing...",
+        "summary_btn": "Generate Summary",
+        "clear_btn": "Clear",
+        "download_btn": "Download",
+        "settings": "Settings",
+        "target_lang": "Target Language",
+        "persona": "AI Persona",
+    }
+}
 
-# --- GÜVENLİK ---
+# --- 4. SESSION STATE YÖNETİMİ ---
+if "app_lang" not in st.session_state: st.session_state.app_lang = "Türkçe"
+if "current_page" not in st.session_state: st.session_state.current_page = "home"
+if "chat_history" not in st.session_state: st.session_state.chat_history = []
+
+# --- 5. GROQ BAĞLANTISI ---
 try:
-    api_key = st.secrets["GROQ_API_KEY"]
+    client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 except:
-    st.error("API anahtarı bulunamadı! Secrets ayarlarını kontrol et.")
+    st.error("API Key Eksik! Lütfen secrets.toml dosyasını kontrol et.")
     st.stop()
 
-client = Groq(api_key=api_key)
+# --- YARDIMCI FONKSİYONLAR ---
+def get_ai_response(text, role_prompt, target_lang):
+    """Llama 3 ile çeviri ve analiz yapar"""
+    system_prompt = f"""
+    {role_prompt}
+    Target Language: {target_lang}.
+    TASK: Translate the text and detect sentiment (One word: Happy, Angry, Neutral etc.).
+    FORMAT: SENTIMENT ||| TRANSLATION
+    """
+    try:
+        res = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": text}]
+        )
+        content = res.choices[0].message.content
+        if "|||" in content:
+            return content.split("|||")
+        return "Nötr", content
+    except:
+        return "Error", "Hata oluştu"
 
-# --- HAFIZA ---
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
+def create_audio(text, lang_code):
+    """Metni sese çevirir"""
+    try:
+        tts = gTTS(text=text, lang=lang_code, slow=False)
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        return fp.getvalue()
+    except:
+        return None
 
-# --- KENAR ÇUBUĞU ---
-with st.sidebar:
-    st.header("🎛️ Ayarlar")
+# =========================================================
+# SAYFA 1: GİRİŞ VE MENÜ (DASHBOARD)
+# =========================================================
+def show_home():
+    # Dil Seçimi (En Üstte)
+    col_lang1, col_lang2, _ = st.columns([1, 1, 4])
+    with col_lang1:
+        st.write("🌐 Interface Language:")
+    with col_lang2:
+        selected_lang = st.selectbox("", ["Türkçe", "English"], label_visibility="collapsed")
+        if selected_lang != st.session_state.app_lang:
+            st.session_state.app_lang = selected_lang
+            st.rerun()
+
+    t = TEXTS[st.session_state.app_lang] # Seçili dil paketini al
+
+    st.markdown(f'<div class="main-title">{t["title"]}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="subtitle">{t["subtitle"]}</div>', unsafe_allow_html=True)
+
+    st.divider()
+
+    # KART MENÜSÜ
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        st.markdown(f"""
+        <div class="card-container">
+            <div class="card-icon">🗣️</div>
+            <div class="card-title">{t['mode_1_title']}</div>
+            <div class="card-desc">{t['mode_1_desc']}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button(f"Giriş: {t['mode_1_title']}", key="btn1", use_container_width=True):
+            st.session_state.current_page = "chat_mode"
+            st.rerun()
+
+    with c2:
+        st.markdown(f"""
+        <div class="card-container">
+            <div class="card-icon">🎙️</div>
+            <div class="card-title">{t['mode_2_title']}</div>
+            <div class="card-desc">{t['mode_2_desc']}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button(f"Giriş: {t['mode_2_title']}", key="btn2", use_container_width=True):
+            st.session_state.current_page = "conf_mode"
+            st.rerun()
+
+    with c3:
+        st.markdown(f"""
+        <div class="card-container">
+            <div class="card-icon">📂</div>
+            <div class="card-title">{t['mode_3_title']}</div>
+            <div class="card-desc">{t['mode_3_desc']}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button(f"Giriş: {t['mode_3_title']}", key="btn3", use_container_width=True):
+            st.session_state.current_page = "file_mode"
+            st.rerun()
+
+# =========================================================
+# MOD 1: KARŞILIKLI SOHBET (DUAL CHAT)
+# =========================================================
+def show_chat_mode():
+    t = TEXTS[st.session_state.app_lang]
     
-    # 1. Dil Seçimi (Çift Yönlü)
-    st.subheader("🗣️ Diller")
-    col_l1, col_l2 = st.columns(2)
-    with col_l1:
-        native_lang = st.selectbox("Benim Dilim:", ("Türkçe", "İngilizce"), index=0)
-    with col_l2:
-        target_lang_name = st.selectbox("Karşı Taraf:", ("İngilizce", "Türkçe", "Almanca", "İspanyolca", "Fransızca", "Rusça", "Arapça", "Japonca", "Çince"), index=0)
-    
+    # Üst Bar
+    c1, c2 = st.columns([1, 5])
+    with c1:
+        if st.button(t["back"]):
+            st.session_state.current_page = "home"
+            st.rerun()
+    with c2:
+        st.header(f"🗣️ {t['mode_1_title']}")
+
+    # Sidebar Ayarları
+    with st.sidebar:
+        st.subheader(t["settings"])
+        target_lang = st.selectbox(t["target_lang"], ["English", "Turkish", "German", "Spanish", "French", "Russian", "Arabic", "Chinese"])
+        persona = st.selectbox(t["persona"], ["Professional", "Friendly", "Kids Mode", "Rude/Mafia", "Knight"])
+        
+        # Temizle Butonu
+        if st.button(t["clear_btn"], type="primary"):
+            st.session_state.chat_history = []
+            st.rerun()
+
     # Dil Kodları
-    lang_codes = {
-        "İngilizce": "en", "Türkçe": "tr", "Almanca": "de", "İspanyolca": "es", 
-        "Fransızca": "fr", "Rusça": "ru", "Arapça": "ar", "Japonca": "ja", "Çince": "zh"
+    lang_map = {"English": "en", "Turkish": "tr", "German": "de", "Spanish": "es", "French": "fr", "Russian": "ru", "Arabic": "ar", "Chinese": "zh"}
+    target_code = lang_map[target_lang]
+    
+    # Karakter Promptu
+    prompts = {
+        "Professional": "You are a professional translator.",
+        "Friendly": "You are a best friend, use slang.",
+        "Kids Mode": "Explain like I am 5 years old.",
+        "Rude/Mafia": "You are a mafia boss, be rude.",
+        "Knight": "You are a medieval knight, use noble language."
     }
-    native_code = lang_codes[native_lang]
-    target_code = lang_codes[target_lang_name]
+    role_prompt = prompts[persona]
 
+    # Mikrofonlar
+    col_me, col_you = st.columns(2)
+    with col_me:
+        st.info(f"🎤 {t['mic_me']}")
+        audio_me = audio_recorder(text="", icon_size="3x", key="rec_me", recording_color="#2196F3", neutral_color="#bbdefb")
+        if audio_me:
+            with st.spinner(t["translating"]):
+                mood, trans = get_ai_response(client.audio.transcriptions.create(file=("a.wav", io.BytesIO(audio_me)), model="whisper-large-v3").text, role_prompt, target_lang)
+                audio_data = create_audio(trans, target_code)
+                st.session_state.chat_history.append({"dir": "me", "text": trans, "mood": mood, "audio": audio_data})
+
+    with col_you:
+        st.warning(f"🎤 {t['mic_you']}")
+        audio_you = audio_recorder(text="", icon_size="3x", key="rec_you", recording_color="#9c27b0", neutral_color="#e1bee7")
+        if audio_you:
+            with st.spinner(t["translating"]):
+                # Buraya normalde kaynak dil tespiti gelir ama basitleştirmek için İngilizce varsayalım
+                mood, trans = get_ai_response(client.audio.transcriptions.create(file=("a.wav", io.BytesIO(audio_you)), model="whisper-large-v3").text, role_prompt, "Turkish" if target_lang != "Turkish" else "English")
+                audio_data = create_audio(trans, "tr") # Varsayılan dönüş Türkçe
+                st.session_state.chat_history.append({"dir": "you", "text": trans, "mood": mood, "audio": audio_data})
+
+    # Geçmişi Göster
     st.divider()
+    for chat in reversed(st.session_state.chat_history):
+        cls = "msg-user" if chat["dir"] == "me" else "msg-ai"
+        align = "left" if chat["dir"] == "me" else "right"
+        st.markdown(f"""
+        <div class="msg-box {cls}">
+            <div style="text-align: {align}; font-size: 0.8em; color: #555;">{chat['mood']}</div>
+            <div style="text-align: {align}; font-weight: bold; font-size: 1.2em;">{chat['text']}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        if chat["audio"]: st.audio(chat["audio"], format="audio/mp3")
 
-    # 2. Karakter
-    st.subheader("🎭 Kişilik")
-    persona_choice = st.selectbox("Tarz:", ("Profesyonel", "Samimi", "Çocuksu", "Kaba/Mafya", "Şövalye", "Özel"))
+# =========================================================
+# MOD 2: KONFERANS (SÜREKLİ DİNLEME)
+# =========================================================
+def show_conf_mode():
+    t = TEXTS[st.session_state.app_lang]
     
-    custom_role = ""
-    if persona_choice == "Özel":
-        custom_role = st.text_area("Rol yaz:", placeholder="Örn: Sen Yodasın.")
-
-    # 3. Hız
-    tts_slow = st.checkbox("🐢 Yavaş Okuma", value=False)
+    if st.button(t["back"]):
+        st.session_state.current_page = "home"
+        st.rerun()
     
-    # 4. Asistan
-    st.divider()
-    if st.button("📝 Özet Çıkar", type="secondary"):
-        if st.session_state.chat_history:
-            with st.spinner("Özetleniyor..."):
-                full_text = "\n".join([f"- {c['user']} -> {c['ai']}" for c in st.session_state.chat_history])
-                res = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=[{"role": "user", "content": f"Özetle, Kararlar, Görevler:\n{full_text}"}]
-                )
-                st.session_state.summary = res.choices[0].message.content
+    st.header(f"🎙️ {t['mode_2_title']}")
+    st.info("Bu modda mikrofon siz 'Durdur' diyene kadar kapanmaz (Max 5 dk sessizlik).")
 
-    if st.button("🗑️ Temizle", type="primary"):
-        st.session_state.chat_history = []
-        if "summary" in st.session_state: del st.session_state.summary
+    with st.sidebar:
+        target_lang = st.selectbox(t["target_lang"], ["Turkish", "English", "German"])
+        if st.button(t["summary_btn"]):
+            st.success("Özet çıkarılıyor...")
+            # Özet mantığı buraya
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        # Pause threshold yüksek (300sn)
+        audio = audio_recorder(text="Sürekli Dinle / Bitir", icon_size="5x", recording_color="#FF0000", pause_threshold=300.0)
+    
+    if audio:
+        with st.spinner(t["analyzing"]):
+            text = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(audio)), model="whisper-large-v3").text
+            _, trans = get_ai_response(text, "You are a simultane translator. Summarize if too long.", target_lang)
+            st.markdown(f"### 📝 Çeviri:\n{trans}")
+            st.audio(create_audio(trans, "tr"), format="audio/mp3")
+
+# =========================================================
+# MOD 3: DOSYA YÜKLEME
+# =========================================================
+def show_file_mode():
+    t = TEXTS[st.session_state.app_lang]
+    
+    if st.button(t["back"]):
+        st.session_state.current_page = "home"
         st.rerun()
 
-# --- ÖZET ---
-if "summary" in st.session_state:
-    st.info(st.session_state.summary)
-    if st.button("Kapat"): del st.session_state.summary; st.rerun()
-
-# --- ANA EKRAN (SEKMELER) ---
-tab1, tab2 = st.tabs(["⚡ Karşılıklı Sohbet", "📂 Dosya Analizi"])
-
-# --- MOTOR ---
-def process_audio(audio_data, mode="native"):
-    # mode: 'native' (Ben konuşuyorum -> Hedefe çevir) 
-    # mode: 'target' (O konuşuyor -> Bana çevir)
+    st.header(f"📂 {t['mode_3_title']}")
     
-    lang_label = native_lang if mode == "native" else target_lang_name
-    target_label = target_lang_name if mode == "native" else native_lang
-    output_lang_code = target_code if mode == "native" else native_code
+    uploaded_file = st.file_uploader("Ses Dosyası (MP3/WAV)", type=['mp3', 'wav', 'm4a'])
     
-    with st.spinner(f'{lang_label} dinleniyor ve çevriliyor...'):
-        try:
-            # 1. Duy
-            transcription = client.audio.transcriptions.create(
-                file=("audio.wav", audio_data), 
-                model="whisper-large-v3",
-                response_format="text"
-            )
+    if uploaded_file and st.button("Analiz Et"):
+        with st.spinner(t["analyzing"]):
+            text = client.audio.transcriptions.create(file=("a.wav", uploaded_file), model="whisper-large-v3").text
+            st.subheader("Orijinal Metin:")
+            st.write(text)
             
-            # 2. Prompt Ayarla
-            role_desc = "Profesyonel tercüman."
-            if persona_choice == "Samimi": role_desc = "Kanka gibi konuş."
-            elif persona_choice == "Kaba/Mafya": role_desc = "Mafya babası gibi konuş."
-            elif persona_choice == "Şövalye": role_desc = "Orta çağ şövalyesi gibi konuş."
-            elif persona_choice == "Özel": role_desc = custom_role
+            st.divider()
+            
+            st.subheader("AI Analizi & Çeviri:")
+            _, trans = get_ai_response(text, "Analyze this text, translate it and give a summary.", "Turkish")
+            st.info(trans)
 
-            system_prompt = f"""
-            Sen {role_desc}.
-            Kaynak Dil: {lang_label}. Hedef Dil: {target_label}.
-            
-            GÖREV:
-            1. Metnin duygusunu bul (Tek kelime).
-            2. Metni hedef dile, karakterine uygun çevir.
-            
-            FORMAT: DUYGU ||| METİN
-            """
-            
-            completion = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": transcription}
-                ],
-            )
-            full_res = completion.choices[0].message.content
-            
-            if "|||" in full_res:
-                mood, translation = full_res.split("|||", 1)
-            else:
-                mood, translation = "Nötr", full_res
 
-            # 3. Seslendir (Hedef dilde konuş)
-            tts = gTTS(text=translation, lang=output_lang_code, slow=tts_slow)
-            audio_fp = io.BytesIO()
-            tts.write_to_fp(audio_fp)
-            
-            # 4. Kaydet
-            st.session_state.chat_history.append({
-                "direction": mode, # Yönü kaydet (Ben mi O mu?)
-                "user": transcription,
-                "ai": translation,
-                "mood": mood.strip(),
-                "audio": audio_fp.getvalue()
-            })
-            # st.rerun() # Otomatik yenileme kapalı (Döngü hatası olmasın)
-            
-        except Exception as e:
-            st.error(f"Hata: {e}")
-
-# --- SEKME 1: ÇİFT MİKROFON ---
-with tab1:
-    st.write("Aşağıdaki butonları kullanarak karşılıklı konuşun:")
-    
-    col_me, col_you = st.columns(2)
-    
-    with col_me:
-        st.info(f"🎤 **BEN ({native_lang})**")
-        audio_me = audio_recorder(text="", recording_color="#2196F3", neutral_color="#d6eaf8", icon_name="microphone", icon_size="4x", key="mic_me")
-        if audio_me and len(audio_me) > 500:
-            process_audio(io.BytesIO(audio_me), mode="native")
-            
-    with col_you:
-        st.warning(f"🎤 **MİSAFİR ({target_lang_name})**")
-        audio_you = audio_recorder(text="", recording_color="#FF5722", neutral_color="#fadbd8", icon_name="microphone", icon_size="4x", key="mic_you")
-        if audio_you and len(audio_you) > 500:
-            process_audio(io.BytesIO(audio_you), mode="target")
-
-# --- SEKME 2: DOSYA ---
-with tab2:
-    f = st.file_uploader("Ses Dosyası", type=['wav', 'mp3'])
-    if f and st.button("Çevir"):
-        process_audio(f, mode="native")
-
-# --- SOHBET AKIŞI ---
-st.divider()
-for chat in reversed(st.session_state.chat_history):
-    # Mesajın yönüne göre tasarımı değiştir
-    if chat['direction'] == 'native':
-        # Ben konuştuysam (Sola yaslı, Mavi)
-        align_class = "tr-msg"
-        speaker_label = f"🗣️ SEN ({native_lang})"
-        trans_label = f"🤖 ÇEVİRİ ({target_lang_name})"
-    else:
-        # O konuştuysa (Sağa yaslı, Turuncu)
-        align_class = "target-msg"
-        speaker_label = f"🗣️ MİSAFİR ({target_lang_name})"
-        trans_label = f"🤖 ÇEVİRİ ({native_lang})"
-    
-    st.markdown(f"""
-    <div class="chat-box {align_class}">
-        <small style="color:#555">{speaker_label}:</small><br>
-        <i>"{chat['user']}"</i><br><br>
-        <small style="color:#555">{trans_label} [Mod: {chat['mood']}]:</small><br>
-        <b style="font-size:1.2em">{chat['ai']}</b>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    col_audio, _ = st.columns([1, 3])
-    with col_audio:
-        st.audio(chat['audio'], format="audio/mp3")
+# =========================================================
+# ANA YÖNLENDİRİCİ (ROUTER)
+# =========================================================
+if st.session_state.current_page == "home":
+    show_home()
+elif st.session_state.current_page == "chat_mode":
+    show_chat_mode()
+elif st.session_state.current_page == "conf_mode":
+    show_conf_mode()
+elif st.session_state.current_page == "file_mode":
+    show_file_mode()
