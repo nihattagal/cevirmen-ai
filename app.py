@@ -11,21 +11,21 @@ import urllib.parse
 
 # --- 1. GENEL AYARLAR ---
 st.set_page_config(
-    page_title="LinguaFlow Pro",
-    page_icon="🚀",
+    page_title="LinguaFlow AI",
+    page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- 2. CSS TASARIM (PERFORMANS & SADELİK) ---
+# --- 2. CSS TASARIM (MOBİL UYUMLU & PRO) ---
 st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
     
     /* Başlık */
     .header-logo { 
-        font-size: 2rem; font-weight: 800; color: #0f172a; 
-        text-align: center; letter-spacing: -0.5px; margin-top: -20px;
+        font-size: 2.2rem; font-weight: 800; color: #0f172a; 
+        text-align: center; letter-spacing: -0.5px; margin-top: -10px;
     }
     
     /* Metin Alanı */
@@ -43,7 +43,7 @@ st.markdown("""
         white-space: pre-wrap; box-shadow: 0 2px 4px rgba(0,0,0,0.01); position: relative;
     }
     
-    /* Model Etiketi (Sağ Üst) */
+    /* Model Badge */
     .model-badge {
         position: absolute; top: 10px; right: 10px;
         background: #f1f5f9; color: #64748b; padding: 4px 8px;
@@ -57,33 +57,43 @@ st.markdown("""
     }
     div.stButton > button:hover { background-color: #334155; transform: translateY(-1px); }
     
+    /* İstatistikler */
+    .stat-card {
+        background: white; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px;
+        text-align: center; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+    .stat-val { font-size: 1.5rem; font-weight: bold; color: #4f46e5; }
+    .stat-lbl { font-size: 0.8rem; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
+    
     /* Geçmiş Öğeleri */
     .history-item {
-        padding: 8px; margin-bottom: 6px; background: white; border-radius: 6px;
-        font-size: 0.8rem; border-left: 3px solid #6366f1; color: #475569;
-        border: 1px solid #f1f5f9;
+        padding: 10px; margin-bottom: 6px; background: white; border-radius: 6px;
+        font-size: 0.85rem; border-left: 3px solid #6366f1; color: #475569;
+        border: 1px solid #f1f5f9; cursor: default;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. API BAĞLANTISI ---
+# --- 3. API ---
 try:
     client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 except:
     st.error("⚠️ API Key Eksik! Secrets ayarlarını kontrol edin.")
     st.stop()
 
-# --- 4. STATE YÖNETİMİ ---
+# --- 4. STATE ---
 if "history" not in st.session_state: st.session_state.history = []
 if "res_text" not in st.session_state: st.session_state.res_text = ""
 if "input_val" not in st.session_state: st.session_state.input_val = ""
-if "stats_trans" not in st.session_state: st.session_state.stats_trans = 0
+if "token_count" not in st.session_state: st.session_state.token_count = 0
 
-# --- 5. MOTOR (MODEL SEÇİMLİ) ---
+# --- 5. MOTOR ---
 def ai_engine(text, task, target_lang="English", tone="Normal", glossary="", model_id="llama-3.3-70b-versatile"):
     if not text: return ""
     
-    st.session_state.stats_trans += 1
+    # Basit Token Tahmini (Kelime sayısı * 1.3)
+    st.session_state.token_count += int(len(text.split()) * 1.3)
+    
     glossary_prompt = f"TERMİNOLOJİ: \n{glossary}" if glossary else ""
 
     if task == "translate":
@@ -95,11 +105,11 @@ def ai_engine(text, task, target_lang="English", tone="Normal", glossary="", mod
     elif task == "improve":
         sys_msg = "Editörsün. Metni düzelt. Format: [DİL] ||| METİN"
     elif task == "summarize":
-        sys_msg = f"Analistsin. Metni {target_lang} dilinde özetle."
+        sys_msg = f"Analistsin. Metni {target_lang} dilinde özetle. Markdown formatında yaz."
 
     try:
         res = client.chat.completions.create(
-            model=model_id, # Dinamik model seçimi
+            model=model_id,
             messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": text[:20000]}]
         )
         return res.choices[0].message.content
@@ -118,7 +128,7 @@ def render_share(text):
     if not text: return
     encoded = urllib.parse.quote(text)
     wa = f"https://api.whatsapp.com/send?text={encoded}"
-    st.markdown(f"<a href='{wa}' target='_blank' style='text-decoration:none; color:#25D366; font-weight:bold; font-size:0.85rem;'>📲 WhatsApp</a>", unsafe_allow_html=True)
+    st.markdown(f"<a href='{wa}' target='_blank' style='text-decoration:none; color:#25D366; font-weight:bold; font-size:0.9rem;'>📲 WhatsApp</a>", unsafe_allow_html=True)
 
 def local_read_file(file):
     try:
@@ -141,39 +151,43 @@ def local_read_web(url):
 
 # --- YAN MENÜ ---
 with st.sidebar:
-    st.markdown("### 🚀 Motor Ayarı")
+    st.markdown("### 📊 Kullanım")
+    st.markdown(f"""
+    <div class="stat-card">
+        <div class="stat-val">{st.session_state.token_count}</div>
+        <div class="stat-lbl">Tahmini Token</div>
+    </div>
+    """, unsafe_allow_html=True)
     
-    # MODEL SEÇİCİ (HIZ VS ZEKA)
-    model_choice = st.radio(
-        "AI Gücü:",
-        ["⚡ Flash (Hızlı)", "🧠 Pro (Zeki)"],
-        captions=["Llama 3.1 8b - Anlık", "Llama 3.3 70b - Detaylı"]
-    )
+    st.markdown("### 🚀 Motor")
+    model_choice = st.radio("AI Gücü:", ["⚡ Flash (Hızlı)", "🧠 Pro (Zeki)"])
     model_id = "llama-3.1-8b-instant" if "Flash" in model_choice else "llama-3.3-70b-versatile"
-    active_badge = "Flash ⚡" if "Flash" in model_choice else "Pro 🧠"
+    active_badge = "Flash" if "Flash" in model_choice else "Pro"
 
     st.divider()
-    st.markdown(f"**Toplam Çeviri:** {st.session_state.stats_trans}")
+    st.markdown("### ⚙️ Araçlar")
     speech_slow = st.checkbox("🐢 Yavaş Okuma", value=False)
-    
     with st.expander("📚 Sözlük"):
         glossary_txt = st.text_area("Örn: AI=Yapay Zeka", height=80)
+    
+    if st.button("🧹 Önbelleği Temizle"):
+        st.session_state.clear()
+        st.rerun()
 
     st.divider()
     st.markdown("### 🕒 Geçmiş")
     if st.session_state.history:
-        for item in st.session_state.history[:6]:
+        for item in st.session_state.history[:5]:
             st.markdown(f"<div class='history-item'>{item['src']}</div>", unsafe_allow_html=True)
-        if st.button("Temizle", type="secondary"): st.session_state.history = []; st.rerun()
 
 # --- BAŞLIK ---
-st.markdown('<div class="header-logo">LinguaFlow Pro</div>', unsafe_allow_html=True)
+st.markdown('<div class="header-logo">LinguaFlow AI</div>', unsafe_allow_html=True)
 
 # --- SEKMELER ---
-tab_text, tab_voice, tab_files, tab_web = st.tabs(["📝 Metin & Yazım", "🎙️ Ses & Toplantı", "📂 Dosya & Belge", "🔗 Web Analiz"])
+tab_text, tab_voice, tab_files, tab_web = st.tabs(["📝 Metin", "🎙️ Ses & Toplantı", "📂 Dosya", "🔗 Web"])
 LANG_OPTIONS = ["English", "Türkçe", "Deutsch", "Français", "Español", "Italiano", "Русский", "العربية", "中文"]
 
-# --- 1. METİN (FORM YAPISI) ---
+# --- 1. METİN ---
 with tab_text:
     c1, c2, c3 = st.columns([3, 1, 3])
     with c1: st.markdown("**Giriş**")
@@ -181,20 +195,15 @@ with tab_text:
 
     col_in, col_out = st.columns(2)
     
-    # SOL (GİRİŞ)
     with col_in:
-        # FORM BAŞLANGICI (Ctrl+Enter için)
         with st.form(key="trans_form"):
-            input_text = st.text_area("Metin", value=st.session_state.input_val, height=250, placeholder="Yazın...", label_visibility="collapsed")
+            input_text = st.text_area("Metin", value=st.session_state.input_val, height=250, placeholder="Yazın ve Ctrl+Enter...", label_visibility="collapsed")
             
             b1, b2 = st.columns([3, 1])
-            with b1:
-                submit_btn = st.form_submit_button("Çevir ➔", type="primary", use_container_width=True)
-            with b2:
-                tone = st.selectbox("Ton", ["Normal", "Resmi", "Samimi"], label_visibility="collapsed")
+            with b1: submit_btn = st.form_submit_button("Çevir ➔", type="primary", use_container_width=True)
+            with b2: tone = st.selectbox("Ton", ["Normal", "Resmi", "Samimi"], label_visibility="collapsed")
         
-        # Düzeltme butonu form dışında (Opsiyonel)
-        if st.button("✨ Metni Düzelt (Write Mode)"):
+        if st.button("✨ Düzelt (Write)"):
             if input_text:
                 with st.spinner("..."):
                     st.session_state.res_text = ai_engine(input_text, "improve", model_id=model_id)
@@ -204,14 +213,11 @@ with tab_text:
             with st.spinner("..."):
                 st.session_state.res_text = ai_engine(input_text, "translate", target_lang, tone, glossary_txt, model_id)
                 st.session_state.input_val = input_text
-                # Geçmiş
                 ts = datetime.datetime.now().strftime("%H:%M")
                 st.session_state.history.insert(0, {"time": ts, "src": input_text[:20]+"..", "res": st.session_state.res_text})
 
-    # SAĞ (ÇIKTI)
     with col_out:
         res = st.session_state.res_text
-        
         st.markdown(f"""
         <div class="result-box">
             <span class="model-badge">{active_badge}</span>
@@ -227,7 +233,7 @@ with tab_text:
                 if aud: st.audio(aud, format="audio/mp3")
             with cb: render_share(res)
             with cc:
-                if st.button("🔄 Al"): # Swap
+                if st.button("🔄 Swap"):
                     st.session_state.input_val = res
                     st.session_state.res_text = ""
                     st.rerun()
@@ -245,8 +251,8 @@ with tab_voice:
             if a1:
                 txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(a1)), model="whisper-large-v3").text
                 lang, res = ai_engine(txt, "translate", target_lang, glossary=glossary_txt, model_id=model_id).split("|||")[-1], ai_engine(txt, "translate", target_lang, glossary=glossary_txt, model_id=model_id)
-                aud = create_audio(res, target_lang, speech_slow)
                 st.markdown(f"<div class='result-box' style='min-height:100px; border-left:4px solid #3b82f6'>{txt}<br><br><b>{res}</b></div>", unsafe_allow_html=True)
+                aud = create_audio(res, target_lang, speech_slow)
                 if aud: st.audio(aud, format="audio/mp3", autoplay=True)
         with c2:
             st.warning(f"MİSAFİR ({target_lang})")
@@ -254,8 +260,8 @@ with tab_voice:
             if a2:
                 txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(a2)), model="whisper-large-v3").text
                 res = ai_engine(txt, "translate", "Türkçe", glossary=glossary_txt, model_id=model_id)
-                aud = create_audio(res, "Türkçe", speech_slow)
                 st.markdown(f"<div class='result-box' style='min-height:100px; border-right:4px solid #ec4899; text-align:right'>{txt}<br><br><b>{res}</b></div>", unsafe_allow_html=True)
+                aud = create_audio(res, "Türkçe", speech_slow)
                 if aud: st.audio(aud, format="audio/mp3", autoplay=True)
 
     else: # Konferans
