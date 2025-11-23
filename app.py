@@ -7,15 +7,14 @@ import datetime
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(
-    page_title="AI Tercüman",
-    page_icon="🌍",
+    page_title="AI Canlı Tercüman",
+    page_icon="🎙️",
     layout="centered"
 )
 
-# --- BAŞLIK VE TASARIM ---
+# --- BAŞLIK ---
 st.markdown("""
-    <h1 style='text-align: center; color: #FF4B4B;'>🌍 AI Cep Tercümanı</h1>
-    <p style='text-align: center;'>Bas • Konuş • Dinle</p>
+    <h1 style='text-align: center; color: #FF4B4B;'>🎙️ AI Canlı Tercüman</h1>
 """, unsafe_allow_html=True)
 
 # --- GÜVENLİK ---
@@ -31,59 +30,81 @@ client = Groq(api_key=api_key)
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-# --- KENAR ÇUBUĞU (AYARLAR) ---
+# --- KENAR ÇUBUĞU ---
 with st.sidebar:
-    st.header("⚙️ Kontrol Paneli")
+    st.header("🎛️ Kontrol Paneli")
+    
+    # --- YENİ: ÇALIŞMA MODU SEÇİMİ ---
+    st.subheader("Mikrofon Modu")
+    work_mode = st.radio(
+        "Nasıl çalışsın?",
+        ("⚡ Telsiz Modu (Sohbet)", "🔴 Konferans Modu (Sürekli)"),
+        help="Telsiz: Kısa cümleler için.\nKonferans: Sen durdurana kadar saatlerce dinler."
+    )
+    
+    st.divider()
     
     st.subheader("Davranış")
-    user_mode = st.selectbox("Mod:", ("Resmi", "Samimi", "Turist", "Agresif"))
+    user_style = st.selectbox("Çeviri Tarzı:", ("Resmi", "Samimi", "Turist", "Özet Çıkar"))
     
-    st.subheader("Çeviri Hedefi")
-    target_lang_name = st.selectbox("Hangi Dile Çevilsin?", ("İngilizce", "Türkçe", "Almanca", "İspanyolca", "Fransızca", "Rusça", "Arapça"))
+    target_lang_name = st.selectbox("Hedef Dil:", ("İngilizce", "Türkçe", "Almanca", "İspanyolca", "Fransızca", "Rusça", "Arapça"))
     
-    # Dil Kodları (Genişletildi)
     lang_codes = {
         "İngilizce": "en", "Türkçe": "tr", "Almanca": "de", 
         "İspanyolca": "es", "Fransızca": "fr", "Rusça": "ru", "Arapça": "ar"
     }
     target_lang_code = lang_codes[target_lang_name]
 
-    st.divider()
-
-    # --- YENİ ÖZELLİK: İNDİRME BUTONU ---
-    # Sohbet geçmişini metne dönüştür
+    # İndirme Butonu
     chat_text = ""
     for chat in st.session_state.chat_history:
-        chat_text += f"🗣️ Sen: {chat['user']}\n🤖 AI: {chat['ai']}\n-------------------\n"
+        chat_text += f"🗣️ Kaynak: {chat['user']}\n🤖 Çeviri: {chat['ai']}\n-------------------\n"
     
-    # İndirme butonu
     st.download_button(
-        label="📥 Sohbeti İndir (TXT)",
+        label="📥 Kayıtları İndir (TXT)",
         data=chat_text,
-        file_name=f"ceviri_gecmisi_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+        file_name=f"konusma_gecmisi_{datetime.datetime.now().strftime('%H%M')}.txt",
         mime="text/plain"
     )
 
-    if st.button("🗑️ Sohbeti Temizle", type="primary"):
+    if st.button("🗑️ Temizle", type="primary"):
         st.session_state.chat_history = []
         st.rerun()
 
 # --- MİKROFON ALANI ---
-# Ortalamak için sütun kullanıyoruz
-col1, col2, col3 = st.columns([1, 2, 1])
+st.divider()
+
+# Mod'a göre bilgilendirme yazısı
+if work_mode == "⚡ Telsiz Modu (Sohbet)":
+    st.info("💡 **Sohbet Modu:** Kısa ve hızlı konuşmalar için idealdir. Durdurunca hemen çevirir.")
+    mic_text_start = "Konuş"
+    mic_text_stop = "Durdur"
+    icon_color = "#e8b62c" # Sarı
+else:
+    st.warning("🔴 **Konferans Modu:** Ortamı kesintisiz dinler. Sen 'Bitir' diyene kadar kapanmaz. Uzun konuşmaları tek seferde çevirir.")
+    mic_text_start = "Sürekli Dinlemeyi Başlat"
+    mic_text_stop = "Dinlemeyi Bitir ve Çevir"
+    icon_color = "#FF0000" # Kırmızı
+
+# Ortalanmış Mikrofon
+col1, col2, col3 = st.columns([1, 10, 1])
 with col2:
-    st.write("🎙️ **Kaydı Başlat / Bitir:**")
     audio_bytes = audio_recorder(
         text="",
-        recording_color="#ff4b4b",
+        recording_color=icon_color,
         neutral_color="#333333",
         icon_name="microphone",
-        icon_size="4x", # Buton daha büyük
+        icon_size="5x", # Dev buton
     )
+    # Butonun altına açıklama
+    if audio_bytes:
+        st.caption("✅ Kayıt alındı, işleniyor...")
+    else:
+        st.caption(f"👆 {mic_text_start} butonuna basın")
 
 # --- İŞLEM ---
 if audio_bytes:
-    with st.spinner('Ses analizi yapılıyor...'):
+    with st.spinner('Ses analizi yapılıyor... (Uzun konuşmalarda bu işlem 2-3 saniye sürebilir)'):
         try:
             # A. Sesi Hazırla
             audio_file = io.BytesIO(audio_bytes)
@@ -96,9 +117,21 @@ if audio_bytes:
                 response_format="text"
             )
             
-            # C. Çevir (Llama)
-            system_prompt = f"Sen profesyonel bir tercümansın. Mod: {user_mode}. Hedef Dil: {target_lang_name}. Sadece çeviriyi ver."
-            
+            # C. Çevir (Llama - Moda Göre Prompt)
+            if work_mode == "🔴 Konferans Modu (Sürekli)":
+                # Konferans modunda yapay zekaya "Akıcı ol" diyoruz
+                system_prompt = f"""
+                Sen profesyonel bir simultane tercümansın. 
+                Kullanıcı uzun bir konuşma yaptı veya ortam sesi kaydedildi.
+                Mod: {user_style}. Hedef Dil: {target_lang_name}.
+                Görevin:
+                1. Tüm konuşmayı anlam bütünlüğünü bozmadan akıcı bir şekilde çevir.
+                2. Eğer konuşma çok dağınıksa toparla ve özetle.
+                """
+            else:
+                # Telsiz modunda hızlı cevap
+                system_prompt = f"Çevirmen. Mod: {user_style}. Hedef: {target_lang_name}. Sadece çeviriyi ver."
+
             completion = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[
@@ -126,18 +159,19 @@ if audio_bytes:
 
 # --- SOHBET GÖRÜNÜMÜ ---
 st.divider()
+# En yeni mesaj en üstte
 for chat in reversed(st.session_state.chat_history):
     with st.container():
-        # Mesaj balonları tasarımı
         st.markdown(f"""
-        <div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; margin-bottom: 5px;">
-            <p style="margin:0;"><b>🗣️ Sen:</b> {chat['user']}</p>
+        <div style="border-left: 5px solid #FF4B4B; padding-left: 10px; margin-bottom: 5px;">
+            <small style="color: gray;">Kaynak Ses:</small><br>
+            <span style="font-size: 18px;">{chat['user']}</span>
         </div>
-        <div style="background-color: #d1e7dd; padding: 10px; border-radius: 10px; margin-bottom: 10px;">
-            <p style="margin:0;"><b>🤖 Çeviri ({target_lang_name}):</b> {chat['ai']}</p>
+        <div style="border-left: 5px solid #28a745; padding-left: 10px; margin-bottom: 10px; background-color: #f9f9f9;">
+            <small style="color: gray;">Çeviri ({target_lang_name}):</small><br>
+            <span style="font-size: 20px; font-weight: bold;">{chat['ai']}</span>
         </div>
         """, unsafe_allow_html=True)
         
-        # Ses oynatıcı
         st.audio(chat['audio'], format="audio/mp3")
         st.divider()
