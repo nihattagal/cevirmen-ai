@@ -5,4 +5,3 @@ gTTS
 beautifulsoup4
 requests
 PyPDF2
-youtube-transcript-api
