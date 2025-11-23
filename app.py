@@ -5,7 +5,8 @@ from gtts import gTTS
 import io
 import requests
 from bs4 import BeautifulSoup
-import PyPDF2 # PDF okumak için
+import PyPDF2
+import base64 # Resimleri kodlamak için
 
 # --- 1. GENEL AYARLAR ---
 st.set_page_config(page_title="AI Tercüman Pro", page_icon="🌐", layout="wide")
@@ -15,7 +16,7 @@ st.markdown("""
     <style>
     .main-header { font-size: 2.5rem; font-weight: 800; color: #333; text-align: center; margin-bottom: 30px; }
     div.stButton > button {
-        width: 100%; height: 120px; font-size: 1.1rem; font-weight: bold;
+        width: 100%; height: 120px; font-size: 1rem; font-weight: bold;
         border-radius: 12px; border: 1px solid #ddd; background: white;
         box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: 0.3s;
     }
@@ -27,8 +28,6 @@ st.markdown("""
     .chat-row { padding: 10px; border-radius: 8px; margin-bottom: 5px; }
     .source-box { background: #e3f2fd; border-left: 4px solid #2196F3; }
     .target-box { background: #fbe9e7; border-right: 4px solid #FF5722; text-align: right; }
-    
-    .doc-box { background: #fff3e0; padding: 20px; border-radius: 10px; border: 1px solid #ffe0b2; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -46,11 +45,7 @@ except:
 
 # --- FONKSİYONLAR ---
 def get_translation(text, target_lang, tone, style_prompt=""):
-    system_prompt = f"""
-    Sen profesyonel bir tercümansın.
-    GÖREVİN: Verilen metni {target_lang} diline çevirmek.
-    KURALLAR: 1. Ton: {tone}. 2. {style_prompt}. 3. Sadece çeviriyi ver.
-    """
+    system_prompt = f"Sen tercümansın. Hedef: {target_lang}. Ton: {tone}. {style_prompt}. Sadece çeviriyi ver."
     try:
         res = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -60,22 +55,40 @@ def get_translation(text, target_lang, tone, style_prompt=""):
     except Exception as e: return f"Hata: {e}"
 
 def get_analysis(text, target_lang):
-    prompt = f"Sen bir asistansın. Metni analiz et. Dil: {target_lang}. ÇIKTI: 1.Özet 2.Ana Fikirler 3.Görevler\nMetin: {text}"
+    prompt = f"Asistansın. Analiz et. Dil: {target_lang}. Çıktı: 1.Özet 2.Ana Fikirler 3.Görevler\nMetin: {text}"
     res = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}])
     return res.choices[0].message.content
 
-def ask_doc(doc_text, question, target_lang):
+# GÖRSEL ANALİZ FONKSİYONU (YENİ!)
+def analyze_image(image_bytes, target_lang):
+    # Resmi base64 formatına çevir (Groq böyle anlar)
+    base64_image = base64.b64encode(image_bytes).decode('utf-8')
+    
     prompt = f"""
-    Sen bir belge asistanısın. Aşağıdaki belgeye göre kullanıcının sorusunu cevapla.
-    Cevap Dili: {target_lang}.
-    
-    BELGE İÇERİĞİ:
-    {doc_text[:10000]} (Kısaltıldı)
-    
-    SORU: {question}
+    Bu görseldeki yazıları veya nesneleri analiz et.
+    GÖREV:
+    1. Eğer görselde YAZI varsa: O yazıyı {target_lang} diline çevir.
+    2. Eğer görselde NESNE varsa: Ne olduğunu {target_lang} dilinde anlat.
     """
-    res = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}])
-    return res.choices[0].message.content
+    
+    try:
+        res = client.chat.completions.create(
+            model="llama-3.2-11b-vision-preview", # GÖRSEL MODELİ
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                    ]
+                }
+            ],
+            temperature=0.5,
+            max_tokens=1024,
+        )
+        return res.choices[0].message.content
+    except Exception as e:
+        return f"Görsel analiz hatası: {str(e)}"
 
 def create_voice(text, lang_code):
     try:
@@ -98,33 +111,36 @@ def show_home():
             
     st.markdown('<div class="main-header">🌐 AI Tercüman Pro</div>', unsafe_allow_html=True)
     
-    # 5 Sütunlu Menü
-    c1, c2, c3, c4, c5 = st.columns(5)
+    # 6 KARTLI MENÜ (3 Sütun x 2 Satır)
+    c1, c2, c3 = st.columns(3)
+    c4, c5, c6 = st.columns(3)
+    
     if st.session_state.app_lang == "Türkçe":
-        titles = ["🗣️ Karşılıklı\nSohbet", "🎙️ Simültane\nKonferans", "📂 Ses Dosyası\nÇeviri", "🔗 Web\nAnaliz", "📄 Belge\nAsistanı"]
+        titles = ["🗣️ Karşılıklı Sohbet", "🎙️ Simültane Konferans", "📂 Ses Dosyası", "🔗 Web Analiz", "📄 Belge Asistanı", "📸 Görsel Çeviri"]
     else:
-        titles = ["🗣️ Dual\nChat", "🎙️ Live\nConference", "📂 Audio File\nTranslate", "🔗 Web\nReader", "📄 Doc\nAssistant"]
+        titles = ["🗣️ Dual Chat", "🎙️ Live Conference", "📂 Audio File", "🔗 Web Reader", "📄 Doc Assistant", "📸 Photo Translate"]
 
-    with c1:
+    with c1: 
         if st.button(titles[0], use_container_width=True): st.session_state.page = "chat"; st.rerun()
-    with c2:
+    with c2: 
         if st.button(titles[1], use_container_width=True): st.session_state.page = "conf"; st.rerun()
-    with c3:
+    with c3: 
         if st.button(titles[2], use_container_width=True): st.session_state.page = "file"; st.rerun()
-    with c4:
+    with c4: 
         if st.button(titles[3], use_container_width=True): st.session_state.page = "web"; st.rerun()
-    with c5:
+    with c5: 
         if st.button(titles[4], use_container_width=True): st.session_state.page = "doc"; st.rerun()
+    with c6: # YENİ MOD
+        if st.button(titles[5], use_container_width=True): st.session_state.page = "vision"; st.rerun()
 
 # --- MOD 1: SOHBET ---
 def show_chat():
     with st.sidebar:
         if st.button("⬅️ Menüye Dön"): st.session_state.page = "home"; st.rerun()
-        st.header("⚙️ Sohbet Ayarları")
+        st.header("⚙️ Sohbet")
         my_lang = st.selectbox("Benim Dilim", ["Türkçe", "English", "Deutsch"])
         target_lang = st.selectbox("Karşı Taraf", ["English", "Türkçe", "Deutsch", "Français", "Español", "Russian", "Arabic", "Chinese"], index=0)
         tone = st.select_slider("Ton", ["Resmi", "Normal", "Samimi"], value="Normal")
-        persona = st.selectbox("Karakter", ["Tercüman", "Öğretmen", "Arkadaş", "Agresif"])
         if st.button("🗑️ Temizle", type="primary"): st.session_state.chat_history = []; st.rerun()
 
     st.markdown(f"### 🗣️ Sohbet: {my_lang} ↔️ {target_lang}")
@@ -135,18 +151,18 @@ def show_chat():
         st.info(f"🎤 BEN ({my_lang})")
         a1 = audio_recorder(text="", icon_size="3x", key="mic1", recording_color="#2196F3")
         if a1:
-            with st.spinner("Çevriliyor..."):
+            with st.spinner("..."):
                 txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(a1)), model="whisper-large-v3").text
-                trans = get_translation(txt, target_lang, tone, f"Role: {persona}")
+                trans = get_translation(txt, target_lang, tone)
                 audio = create_voice(trans, lang_map[target_lang])
                 st.session_state.chat_history.append({"src": txt, "trg": trans, "dir": "me", "audio": audio})
     with c2:
         st.warning(f"🎤 KARŞI TARAF ({target_lang})")
         a2 = audio_recorder(text="", icon_size="3x", key="mic2", recording_color="#FF5722")
         if a2:
-            with st.spinner("Çevriliyor..."):
+            with st.spinner("..."):
                 txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(a2)), model="whisper-large-v3").text
-                trans = get_translation(txt, my_lang, tone, f"Role: {persona}")
+                trans = get_translation(txt, my_lang, tone)
                 audio = create_voice(trans, lang_map[my_lang])
                 st.session_state.chat_history.append({"src": txt, "trg": trans, "dir": "you", "audio": audio})
 
@@ -162,10 +178,8 @@ def show_chat():
 def show_conf():
     with st.sidebar:
         if st.button("⬅️ Menüye Dön"): st.session_state.page = "home"; st.rerun()
-        st.header("🎙️ Konferans Ayarları")
+        st.header("🎙️ Konferans")
         target_lang = st.selectbox("Hedef Dil", ["Türkçe", "English", "Deutsch", "Français", "Español"], index=1)
-        tone = st.select_slider("Ton", ["Resmi", "Normal", "Özetleyerek"], value="Resmi")
-        st.divider()
         if st.button("📝 Özet Çıkar"):
             if st.session_state.chat_history:
                 full = "\n".join([m['trg'] for m in st.session_state.chat_history])
@@ -178,12 +192,12 @@ def show_conf():
     if audio:
         with st.spinner("Çevriliyor..."):
             txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(audio)), model="whisper-large-v3").text
-            trans = get_translation(txt, target_lang, tone)
+            trans = get_translation(txt, target_lang, "Normal")
             st.session_state.chat_history.append({"src": txt, "trg": trans})
             
     if "summary" in st.session_state:
         st.success("📝 Rapor"); st.write(st.session_state.summary)
-        if st.button("Raporu Kapat"): del st.session_state.summary; st.rerun()
+        if st.button("Kapat"): del st.session_state.summary; st.rerun()
             
     st.divider()
     for msg in reversed(st.session_state.chat_history):
@@ -195,9 +209,8 @@ def show_conf():
 def show_file():
     with st.sidebar:
         if st.button("⬅️ Menüye Dön"): st.session_state.page = "home"; st.rerun()
-        st.header("📂 Dosya Ayarları")
+        st.header("📂 Dosya")
         target_lang = st.selectbox("Hedef Dil", ["Türkçe", "English", "Deutsch"])
-        mode = st.radio("İşlem", ["Sadece Çevir", "Çevir ve Özetle"])
 
     st.markdown("### 📂 Ses Dosyası Yükle")
     f = st.file_uploader("MP3/WAV", type=['mp3','wav'])
@@ -205,19 +218,13 @@ def show_file():
         with st.spinner("İşleniyor..."):
             txt = client.audio.transcriptions.create(file=("a.wav", f), model="whisper-large-v3").text
             trans = get_translation(txt, target_lang, "Normal")
-            if mode == "Sadece Çevir":
-                st.subheader("Çeviri:"); st.write(trans)
-            else:
-                summ = get_analysis(trans, target_lang)
-                c1, c2 = st.columns(2)
-                with c1: st.subheader("Çeviri"); st.write(trans)
-                with c2: st.subheader("Özet"); st.info(summ)
+            st.subheader("Çeviri:"); st.write(trans)
 
 # --- MOD 4: WEB ---
 def show_web():
     with st.sidebar:
         if st.button("⬅️ Menüye Dön"): st.session_state.page = "home"; st.rerun()
-        st.header("🔗 Web Ayarları")
+        st.header("🔗 Web")
         target_lang = st.selectbox("Rapor Dili", ["Türkçe", "English"])
 
     st.markdown("### 🔗 Web Okuyucu")
@@ -232,42 +239,54 @@ def show_web():
                 st.success("✅ Analiz Tamamlandı"); st.markdown(summ)
             except Exception as e: st.error(f"Hata: {e}")
 
-# --- MOD 5: BELGE ASİSTANI (YENİ!) ---
+# --- MOD 5: BELGE ---
 def show_doc():
     with st.sidebar:
         if st.button("⬅️ Menüye Dön"): st.session_state.page = "home"; st.rerun()
-        st.header("📄 Belge Ayarları")
-        target_lang = st.selectbox("Cevap Dili", ["Türkçe", "English", "Deutsch"])
+        st.header("📄 Belge")
+        target_lang = st.selectbox("Dil", ["Türkçe", "English"])
 
-    st.markdown("### 📄 PDF Belge Asistanı")
-    st.info("Bir PDF yükleyin ve ona sorular sorun veya özetletin.")
-    
+    st.markdown("### 📄 PDF Asistanı")
     doc_file = st.file_uploader("PDF Yükle", type=['pdf'])
-    
     if doc_file:
-        # PDF Okuma
         reader = PyPDF2.PdfReader(doc_file)
-        doc_text = ""
-        for page in reader.pages:
-            doc_text += page.extract_text()
-        
-        st.success(f"✅ Belge Yüklendi ({len(reader.pages)} sayfa)")
-        
-        # Seçenekler
-        tab1, tab2 = st.tabs(["📝 Özetle & Çevir", "💬 Belgeyle Sohbet"])
-        
-        with tab1:
-            if st.button("Özetini Çıkar"):
-                with st.spinner("AI okuyor..."):
-                    summ = get_analysis(doc_text[:10000], target_lang)
-                    st.markdown(summ)
-                    
-        with tab2:
-            question = st.text_input("Belge hakkında bir soru sor:")
-            if st.button("Sor") and question:
-                with st.spinner("Cevap aranıyor..."):
-                    ans = ask_doc(doc_text, question, target_lang)
-                    st.markdown(f"<div class='doc-box'><b>Soru:</b> {question}<br><br><b>Cevap:</b> {ans}</div>", unsafe_allow_html=True)
+        doc_text = "".join([page.extract_text() for page in reader.pages])
+        if st.button("Özetle"):
+            with st.spinner("Okunuyor..."):
+                st.markdown(get_analysis(doc_text[:10000], target_lang))
+
+# --- MOD 6: GÖRSEL ÇEVİRİ (YENİ!) ---
+def show_vision():
+    with st.sidebar:
+        if st.button("⬅️ Menüye Dön"): st.session_state.page = "home"; st.rerun()
+        st.header("📸 Görsel")
+        target_lang = st.selectbox("Hedef Dil", ["Türkçe", "English", "Deutsch", "Français"])
+
+    st.markdown("### 📸 Görsel/Kamera Çeviri")
+    st.info("Bir tabela, menü veya herhangi bir resim yükleyin/çekin.")
+    
+    # Kamera veya Dosya Seçimi
+    cam_pic = st.camera_input("Fotoğraf Çek")
+    file_pic = st.file_uploader("Veya Galeriden Yükle", type=['jpg', 'png', 'jpeg'])
+    
+    final_pic = cam_pic if cam_pic else file_pic
+    
+    if final_pic:
+        st.image(final_pic, caption="Seçilen Görsel", width=300)
+        if st.button("🖼️ Görseli Tara ve Çevir", type="primary"):
+            with st.spinner("Yapay zeka görseli inceliyor..."):
+                result = analyze_image(final_pic.getvalue(), target_lang)
+                
+                st.success("✅ Sonuç:")
+                st.markdown(f"""
+                <div style="background-color:#f9fbe7; padding:20px; border-radius:10px; border:1px solid #cddc39;">
+                    {result}
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Seslendirme opsiyonu
+                audio = create_voice(result[:200], "tr")
+                if audio: st.audio(audio, format="audio/mp3")
 
 # --- ROUTER ---
 if st.session_state.page == "home": show_home()
@@ -276,3 +295,4 @@ elif st.session_state.page == "conf": show_conf()
 elif st.session_state.page == "file": show_file()
 elif st.session_state.page == "web": show_web()
 elif st.session_state.page == "doc": show_doc()
+elif st.session_state.page == "vision": show_vision()
