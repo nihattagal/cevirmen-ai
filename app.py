@@ -34,12 +34,11 @@ if "chat_history" not in st.session_state:
 with st.sidebar:
     st.header("🎛️ Kontrol Paneli")
     
-    # --- YENİ: ÇALIŞMA MODU SEÇİMİ ---
     st.subheader("Mikrofon Modu")
     work_mode = st.radio(
         "Nasıl çalışsın?",
         ("⚡ Telsiz Modu (Sohbet)", "🔴 Konferans Modu (Sürekli)"),
-        help="Telsiz: Kısa cümleler için.\nKonferans: Sen durdurana kadar saatlerce dinler."
+        help="Telsiz: Kısa cümleler için.\nKonferans: Sen durdurana kadar kapanmaz."
     )
     
     st.divider()
@@ -74,17 +73,16 @@ with st.sidebar:
 # --- MİKROFON ALANI ---
 st.divider()
 
-# Mod'a göre bilgilendirme yazısı
 if work_mode == "⚡ Telsiz Modu (Sohbet)":
-    st.info("💡 **Sohbet Modu:** Kısa ve hızlı konuşmalar için idealdir. Durdurunca hemen çevirir.")
+    st.info("💡 **Sohbet Modu:** Kısa konuşmalar. Duraksarsan otomatik durabilir.")
     mic_text_start = "Konuş"
-    mic_text_stop = "Durdur"
     icon_color = "#e8b62c" # Sarı
+    pause_limit = 2.0 # 2 saniye susarsan kapat
 else:
-    st.warning("🔴 **Konferans Modu:** Ortamı kesintisiz dinler. Sen 'Bitir' diyene kadar kapanmaz. Uzun konuşmaları tek seferde çevirir.")
+    st.warning("🔴 **Konferans Modu:** SÜREKLİ DİNLEME AKTİF. Sen butona tekrar basana kadar (veya 5 dk sessizlik olana kadar) kapanmaz.")
     mic_text_start = "Sürekli Dinlemeyi Başlat"
-    mic_text_stop = "Dinlemeyi Bitir ve Çevir"
     icon_color = "#FF0000" # Kırmızı
+    pause_limit = 300.0 # 300 saniye (5 dakika) susarsan kapat (Neredeyse sonsuz)
 
 # Ortalanmış Mikrofon
 col1, col2, col3 = st.columns([1, 10, 1])
@@ -94,17 +92,19 @@ with col2:
         recording_color=icon_color,
         neutral_color="#333333",
         icon_name="microphone",
-        icon_size="5x", # Dev buton
+        icon_size="5x",
+        pause_threshold=pause_limit, # <-- İŞTE SİHİRLİ DOKUNUŞ BURASI
+        sample_rate=44100
     )
-    # Butonun altına açıklama
+    
     if audio_bytes:
         st.caption("✅ Kayıt alındı, işleniyor...")
     else:
-        st.caption(f"👆 {mic_text_start} butonuna basın")
+        st.caption(f"👆 {mic_text_start} için bas")
 
 # --- İŞLEM ---
 if audio_bytes:
-    with st.spinner('Ses analizi yapılıyor... (Uzun konuşmalarda bu işlem 2-3 saniye sürebilir)'):
+    with st.spinner('Uzun ses kaydı işleniyor, lütfen bekleyin...'):
         try:
             # A. Sesi Hazırla
             audio_file = io.BytesIO(audio_bytes)
@@ -117,19 +117,17 @@ if audio_bytes:
                 response_format="text"
             )
             
-            # C. Çevir (Llama - Moda Göre Prompt)
+            # C. Çevir (Llama)
             if work_mode == "🔴 Konferans Modu (Sürekli)":
-                # Konferans modunda yapay zekaya "Akıcı ol" diyoruz
                 system_prompt = f"""
                 Sen profesyonel bir simultane tercümansın. 
                 Kullanıcı uzun bir konuşma yaptı veya ortam sesi kaydedildi.
                 Mod: {user_style}. Hedef Dil: {target_lang_name}.
                 Görevin:
                 1. Tüm konuşmayı anlam bütünlüğünü bozmadan akıcı bir şekilde çevir.
-                2. Eğer konuşma çok dağınıksa toparla ve özetle.
+                2. Metin çok uzunsa ana fikri kaybetmeden özetleyerek çevir.
                 """
             else:
-                # Telsiz modunda hızlı cevap
                 system_prompt = f"Çevirmen. Mod: {user_style}. Hedef: {target_lang_name}. Sadece çeviriyi ver."
 
             completion = client.chat.completions.create(
@@ -159,12 +157,11 @@ if audio_bytes:
 
 # --- SOHBET GÖRÜNÜMÜ ---
 st.divider()
-# En yeni mesaj en üstte
 for chat in reversed(st.session_state.chat_history):
     with st.container():
         st.markdown(f"""
         <div style="border-left: 5px solid #FF4B4B; padding-left: 10px; margin-bottom: 5px;">
-            <small style="color: gray;">Kaynak Ses:</small><br>
+            <small style="color: gray;">Kaynak:</small><br>
             <span style="font-size: 18px;">{chat['user']}</span>
         </div>
         <div style="border-left: 5px solid #28a745; padding-left: 10px; margin-bottom: 10px; background-color: #f9f9f9;">
@@ -172,6 +169,5 @@ for chat in reversed(st.session_state.chat_history):
             <span style="font-size: 20px; font-weight: bold;">{chat['ai']}</span>
         </div>
         """, unsafe_allow_html=True)
-        
         st.audio(chat['audio'], format="audio/mp3")
         st.divider()
