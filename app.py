@@ -4,321 +4,327 @@ from audio_recorder_streamlit import audio_recorder
 from gtts import gTTS
 import io
 import requests
-from bs4 import BeautifulSoup # Web sitelerini okumak için
+from bs4 import BeautifulSoup
 
-# --- 1. SAYFA YAPILANDIRMASI ---
-st.set_page_config(
-    page_title="AI Super Hub",
-    page_icon="🌐",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+# --- 1. GENEL AYARLAR ---
+st.set_page_config(page_title="AI Tercüman Pro", page_icon="🌐", layout="wide")
 
-# --- 2. CSS TASARIM (TIKLANABİLİR KARTLAR) ---
+# CSS: Kartlar ve Tasarım
 st.markdown("""
     <style>
-    /* Ana Başlık */
-    .main-title {
-        font-size: 3rem;
-        font-weight: 800;
-        background: -webkit-linear-gradient(45deg, #FF0080, #7928CA);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        text-align: center;
-        margin-bottom: 10px;
-    }
-    .subtitle { text-align: center; color: #666; margin-bottom: 40px; }
-
-    /* KART GÖRÜNÜMLÜ BUTONLAR */
-    /* Streamlit butonlarını tamamen değiştiriyoruz */
+    .main-header { font-size: 2.5rem; font-weight: 800; color: #333; text-align: center; margin-bottom: 30px; }
+    /* Kart Butonlar */
     div.stButton > button {
-        width: 100%;
-        height: 180px;
-        white-space: pre-wrap; /* Alt satıra geçmeye izin ver */
-        background-color: #ffffff;
-        color: #333333;
-        border: 1px solid #e0e0e0;
-        border-radius: 15px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        transition: all 0.3s ease;
-        font-size: 1.2rem;
+        width: 100%; height: 120px; font-size: 1.2rem; font-weight: bold;
+        border-radius: 12px; border: 1px solid #ddd; background: white;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: 0.3s;
     }
-    
-    /* Mouse üzerine gelince (Hover) */
     div.stButton > button:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 10px 20px rgba(0,0,0,0.15);
-        border-color: #7928CA;
-        color: #7928CA;
-        background-color: #fcfcfc;
+        transform: translateY(-5px); border-color: #4B0082; color: #4B0082; background: #f8f9fa;
     }
+    /* Geri Dön Butonu (Küçük) */
+    .back-area div.stButton > button { height: auto; width: auto; background: #eee; font-size: 1rem; padding: 5px 15px; }
     
-    /* Geri Dön Butonu için özel stil (Küçük olsun) */
-    div.back-btn > button {
-        height: auto;
-        width: auto;
-        padding: 5px 15px;
-        font-size: 1rem;
-        background-color: #f0f0f0;
-    }
-
     /* Mesaj Kutuları */
-    .msg-box { padding: 15px; border-radius: 15px; margin-bottom: 10px; }
-    .msg-user { background-color: #e3f2fd; border-left: 5px solid #2196F3; }
-    .msg-ai { background-color: #f3e5f5; border-right: 5px solid #9c27b0; text-align: right; }
+    .chat-row { padding: 10px; border-radius: 8px; margin-bottom: 5px; }
+    .source-box { background: #e3f2fd; border-left: 4px solid #2196F3; }
+    .target-box { background: #fbe9e7; border-right: 4px solid #FF5722; text-align: right; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. DİL VE METİNLER ---
-TEXTS = {
-    "Türkçe": {
-        "title": "AI Super Hub",
-        "sub": "Ses, Metin ve Web Analiz Merkezi",
-        "m1": "🗣️\n\nKarşılıklı\nSohbet",
-        "m2": "🎙️\n\nSimültane\nKonferans",
-        "m3": "📂\n\nSes Dosyası\nAnalizi",
-        "m4": "🔗\n\nWeb Sitesi\nÇeviri & Analiz", # YENİ
-        "back": "⬅️ Ana Menü",
-        "analyze": "Analiz Et",
-        "translating": "Çevriliyor...",
-        "analyzing": "İçerik çekiliyor ve analiz ediliyor...",
-        "url_ph": "https://www.ornek.com",
-        "web_title": "Web Sitesi Analizcisi",
-        "web_desc": "Bir URL girin, yapay zeka içeriği okusun, özetlesin ve çevirsin.",
-        "mic_me": "BEN", "mic_you": "MİSAFİR",
-        "err_url": "Lütfen geçerli bir URL girin.",
-        "summary_h": "📋 Özet", "trans_h": "🌍 Çeviri",
-        "chat_ph": "Sohbet geçmişi...",
-    },
-    "English": {
-        "title": "AI Super Hub",
-        "sub": "Voice, Text & Web Analysis Center",
-        "m1": "🗣️\n\nDual\nChat",
-        "m2": "🎙️\n\nLive\nConference",
-        "m3": "📂\n\nAudio File\nAnalysis",
-        "m4": "🔗\n\nWeb Page\nTranslate & Analyze", # YENİ
-        "back": "⬅️ Main Menu",
-        "analyze": "Analyze",
-        "translating": "Translating...",
-        "analyzing": "Fetching and analyzing content...",
-        "url_ph": "https://www.example.com",
-        "web_title": "Web Page Analyzer",
-        "web_desc": "Enter a URL, AI will read, summarize and translate it.",
-        "mic_me": "ME", "mic_you": "GUEST",
-        "err_url": "Please enter a valid URL.",
-        "summary_h": "📋 Summary", "trans_h": "🌍 Translation",
-        "chat_ph": "Chat history...",
-    }
-}
-
-# --- STATE ---
-if "app_lang" not in st.session_state: st.session_state.app_lang = "Türkçe"
-if "current_page" not in st.session_state: st.session_state.current_page = "home"
+# --- 2. STATE YÖNETİMİ ---
+if "page" not in st.session_state: st.session_state.page = "home"
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
+if "app_lang" not in st.session_state: st.session_state.app_lang = "Türkçe"
 
-# --- GROQ ---
+# --- 3. API BAĞLANTISI ---
 try:
     client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 except:
-    st.error("API Key Eksik!")
+    st.error("API Key eksik! Lütfen Secrets ayarlarını yapın.")
     st.stop()
 
 # --- YARDIMCI FONKSİYONLAR ---
-def scrape_website(url):
-    """Verilen URL'deki metinleri çeker"""
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
-        # Sadece paragrafları ve başlıkları al
-        paragraphs = soup.find_all(['p', 'h1', 'h2', 'h3'])
-        text = " ".join([p.get_text() for p in paragraphs])
-        
-        # Çok uzunsa kırp (Token limiti için)
-        return text[:6000] 
-    except Exception as e:
-        return None
-
-def get_ai_response(text, system_p, target_lang):
-    prompt = f"{system_p}\nHedef Dil: {target_lang}\nMetin: {text}"
+def get_translation(text, target_lang, tone, style_prompt=""):
+    """
+    Bu fonksiyon SADECE ÇEVİRİ yapar. Analiz yapmaz.
+    """
+    system_prompt = f"""
+    Sen profesyonel bir tercümansın.
+    GÖREVİN: Verilen metni {target_lang} diline çevirmek.
+    
+    KURALLAR:
+    1. Ton: {tone} (Örn: Resmi, Samimi, Agresif).
+    2. Ekstra Stil: {style_prompt}.
+    3. ASLA metnin orijinalini tekrar etme.
+    4. ASLA "Çeviri şudur" gibi giriş cümleleri kurma. Sadece çeviriyi ver.
+    """
     try:
         res = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": text}
+            ]
         )
         return res.choices[0].message.content
-    except: return "Hata."
+    except Exception as e:
+        return f"Hata: {e}"
 
-def create_audio(text, lang="tr"):
+def get_analysis(text, target_lang):
+    """
+    Bu fonksiyon SADECE ANALİZ ve ÖZET yapar.
+    """
+    prompt = f"""
+    Sen bir asistansın. Aşağıdaki metni analiz et. Rapor dili: {target_lang}.
+    ÇIKTI FORMATI:
+    1. 📋 Özet
+    2. 💡 Ana Fikirler
+    3. ✅ Varsa Aksiyonlar/Görevler
+    
+    Metin: {text}
+    """
+    res = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return res.choices[0].message.content
+
+def create_voice(text, lang_code):
     try:
-        tts = gTTS(text=text, lang=lang, slow=False)
+        tts = gTTS(text=text, lang=lang_code, slow=False)
         fp = io.BytesIO()
         tts.write_to_fp(fp)
         return fp.getvalue()
     except: return None
 
-# =========================================================
+# ==========================================
 # SAYFALAR
-# =========================================================
+# ==========================================
 
+# --- ANA MENÜ ---
 def show_home():
     # Dil Seçimi
-    c1, c2, c3 = st.columns([1, 6, 1])
-    with c3:
-        sl = st.selectbox("", ["Türkçe", "English"], label_visibility="collapsed")
-        if sl != st.session_state.app_lang:
-            st.session_state.app_lang = sl
-            st.rerun()
-
-    t = TEXTS[st.session_state.app_lang]
-    st.markdown(f'<div class="main-title">{t["title"]}</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="subtitle">{t["sub"]}</div>', unsafe_allow_html=True)
-
-    # 4 KARTLI IZGARA MENÜ
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        # Butonun kendisi KART oldu artık
-        if st.button(t["m1"], use_container_width=True):
-            st.session_state.current_page = "chat"
-            st.rerun()
-    
-    with col2:
-        if st.button(t["m2"], use_container_width=True):
-            st.session_state.current_page = "conf"
+    c1, c2 = st.columns([8, 2])
+    with c2:
+        l = st.selectbox("Arayüz Dili", ["Türkçe", "English"], label_visibility="collapsed")
+        if l != st.session_state.app_lang:
+            st.session_state.app_lang = l
             st.rerun()
             
-    with col3:
-        if st.button(t["m3"], use_container_width=True):
-            st.session_state.current_page = "file"
-            st.rerun()
-
-    with col4:
-        if st.button(t["m4"], use_container_width=True):
-            st.session_state.current_page = "web"
-            st.rerun()
-
-# --- MOD 1: SOHBET ---
-def show_chat():
-    t = TEXTS[st.session_state.app_lang]
-    st.markdown('<div class="back-btn">', unsafe_allow_html=True)
-    if st.button(t["back"]): st.session_state.current_page = "home"; st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">🌐 AI Tercüman Pro</div>', unsafe_allow_html=True)
     
-    st.header(t["m1"].replace("\n", " "))
+    # Kartlar
+    c1, c2, c3, c4 = st.columns(4)
+    
+    # Metinler (Dil paketine göre)
+    if st.session_state.app_lang == "Türkçe":
+        titles = ["🗣️ Karşılıklı\nSohbet", "🎙️ Simültane\nKonferans", "📂 Dosya\nÇeviri", "🔗 Web\nOkuyucu"]
+    else:
+        titles = ["🗣️ Dual\nChat", "🎙️ Live\nConference", "📂 File\nTranslate", "🔗 Web\nReader"]
+
+    with c1:
+        if st.button(titles[0], use_container_width=True): st.session_state.page = "chat"; st.rerun()
+    with c2:
+        if st.button(titles[1], use_container_width=True): st.session_state.page = "conf"; st.rerun()
+    with c3:
+        if st.button(titles[2], use_container_width=True): st.session_state.page = "file"; st.rerun()
+    with c4:
+        if st.button(titles[3], use_container_width=True): st.session_state.page = "web"; st.rerun()
+
+# --- MOD 1: KARŞILIKLI SOHBET (DETAYLI) ---
+def show_chat():
+    # Sidebar Ayarları (Burada olmalı!)
+    with st.sidebar:
+        if st.button("⬅️ Menüye Dön"): st.session_state.page = "home"; st.rerun()
+        st.header("⚙️ Sohbet Ayarları")
+        
+        # 1. Diller
+        st.subheader("Diller")
+        my_lang = st.selectbox("Benim Dilim", ["Türkçe", "English", "Deutsch"])
+        target_lang = st.selectbox("Karşı Taraf", ["English", "Türkçe", "Deutsch", "Français", "Español", "Russian", "Arabic", "Chinese"])
+        
+        # 2. Ton
+        st.subheader("Çeviri Tarzı")
+        tone = st.select_slider("Ton Seçimi", options=["Çok Resmi", "Resmi", "Normal", "Samimi", "Sokak Ağzı"], value="Normal")
+        
+        # 3. Kişilik
+        st.subheader("AI Rolü")
+        persona = st.selectbox("Karakter", ["Standart Tercüman", "Sabırlı Öğretmen", "Esprili Arkadaş", "Agresif"])
+        
+        if st.button("🗑️ Sohbeti Temizle", type="primary"):
+            st.session_state.chat_history = []
+            st.rerun()
+
+    # Ana Ekran
+    st.markdown(f"### 🗣️ Sohbet Modu: {my_lang} ↔️ {target_lang}")
     
     # Mikrofonlar
     c1, c2 = st.columns(2)
+    
+    # Dil kodları haritası
+    lang_map = {"English": "en", "Türkçe": "tr", "Deutsch": "de", "Français": "fr", "Español": "es", "Russian": "ru", "Arabic": "ar", "Chinese": "zh"}
+    
+    # BEN
     with c1:
-        st.info(t["mic_me"])
-        a1 = audio_recorder(text="", icon_size="3x", key="a1", recording_color="#2196F3")
-        if a1: 
-            with st.spinner(t["translating"]):
+        st.info(f"🎤 BEN ({my_lang})")
+        a1 = audio_recorder(text="", icon_size="3x", key="mic1", recording_color="#2196F3")
+        if a1:
+            with st.spinner("Çevriliyor..."):
                 txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(a1)), model="whisper-large-v3").text
-                trans = get_ai_response(txt, "Translate this text.", "English") # Basitleştirildi
-                st.session_state.chat_history.append({"u": txt, "a": trans, "dir": "me"})
-
+                # Çeviri: Ben -> Hedef
+                trans = get_translation(txt, target_lang, tone, f"Role: {persona}")
+                # Ses: Hedef dilde oku
+                audio = create_voice(trans, lang_map[target_lang])
+                st.session_state.chat_history.append({"src": txt, "trg": trans, "dir": "me", "audio": audio})
+    
+    # KARŞI TARAF
     with c2:
-        st.warning(t["mic_you"])
-        a2 = audio_recorder(text="", icon_size="3x", key="a2", recording_color="#9c27b0")
+        st.warning(f"🎤 KARŞI TARAF ({target_lang})")
+        a2 = audio_recorder(text="", icon_size="3x", key="mic2", recording_color="#FF5722")
         if a2:
-             with st.spinner(t["translating"]):
+            with st.spinner("Çevriliyor..."):
                 txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(a2)), model="whisper-large-v3").text
-                trans = get_ai_response(txt, "Translate this text.", "Turkish")
-                st.session_state.chat_history.append({"u": txt, "a": trans, "dir": "you"})
-    
-    # Geçmiş
-    for c in reversed(st.session_state.chat_history):
-        align = "msg-user" if c["dir"] == "me" else "msg-ai"
-        st.markdown(f'<div class="msg-box {align}"><b>{c["u"]}</b><br><i>{c["a"]}</i></div>', unsafe_allow_html=True)
+                # Çeviri: Hedef -> Ben
+                trans = get_translation(txt, my_lang, tone, f"Role: {persona}")
+                # Ses: Benim dilimde oku
+                audio = create_voice(trans, lang_map[my_lang])
+                st.session_state.chat_history.append({"src": txt, "trg": trans, "dir": "you", "audio": audio})
 
-# --- MOD 2: KONFERANS ---
+    # Geçmiş Gösterimi
+    st.divider()
+    for msg in reversed(st.session_state.chat_history):
+        if msg['dir'] == "me":
+            # Benim mesajım (Sola yaslı)
+            st.markdown(f"""
+            <div class="chat-row source-box">
+                <small>🗣️ {my_lang}:</small> {msg['src']}<br>
+                <b style="font-size:1.2em">🤖 {target_lang}: {msg['trg']}</b>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            # Onun mesajı (Sağa yaslı)
+            st.markdown(f"""
+            <div class="chat-row target-box">
+                <small>{target_lang}:</small> {msg['src']} 🗣️<br>
+                <b style="font-size:1.2em">{msg['trg']} : {my_lang} 🤖</b>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        if msg['audio']: st.audio(msg['audio'], format="audio/mp3")
+
+# --- MOD 2: KONFERANS (SİMÜLTANE) ---
 def show_conf():
-    t = TEXTS[st.session_state.app_lang]
-    st.markdown('<div class="back-btn">', unsafe_allow_html=True)
-    if st.button(t["back"]): st.session_state.current_page = "home"; st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+    with st.sidebar:
+        if st.button("⬅️ Menüye Dön"): st.session_state.page = "home"; st.rerun()
+        st.header("🎙️ Konferans Ayarları")
+        
+        target_lang = st.selectbox("Hedef Dil", ["Türkçe", "English", "Deutsch", "Français", "Español"])
+        tone = st.select_slider("Çeviri Tonu", ["Resmi", "Normal", "Özetleyerek"], value="Resmi")
+        
+        st.divider()
+        st.info("Bu modda ortam dinlenir ve seçilen dile çevrilir. Sohbet edilmez, sadece çeviri yapılır.")
+        
+        # ANALİZ BUTONU BURADA (İsteğe bağlı)
+        if st.button("📝 Toplantı Özeti Çıkar"):
+            if st.session_state.chat_history:
+                full_text = "\n".join([m['trg'] for m in st.session_state.chat_history])
+                summary = get_analysis(full_text, target_lang)
+                st.session_state.summary = summary
+            else:
+                st.warning("Henüz veri yok.")
+
+    st.markdown(f"### 🎙️ Simültane Çeviri -> {target_lang}")
     
-    st.header(t["m2"].replace("\n", " "))
-    st.info("5 dk sessizliğe kadar dinler.")
+    # Mikrofon (Uzun süreli)
+    audio = audio_recorder(text="Dinlemeyi Başlat / Durdur", icon_size="5x", recording_color="red", pause_threshold=300.0)
     
-    audio = audio_recorder(text="", icon_size="5x", recording_color="red", pause_threshold=300.0)
     if audio:
-        with st.spinner(t["translating"]):
+        with st.spinner("Çevriliyor..."):
+            # 1. Kaynak sesi al (Dil otomatik algılanır)
             txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(audio)), model="whisper-large-v3").text
-            trans = get_ai_response(txt, "Summarize and translate.", "Turkish")
-            st.success(trans)
+            
+            # 2. Direkt Çevir (Yorum katma)
+            trans = get_translation(txt, target_lang, tone)
+            
+            # 3. Kaydet
+            st.session_state.chat_history.append({"src": txt, "trg": trans})
+            
+    # Özet varsa göster
+    if "summary" in st.session_state:
+        st.success("📝 Toplantı Raporu")
+        st.write(st.session_state.summary)
+        if st.button("Raporu Kapat"): del st.session_state.summary; st.rerun()
+            
+    # Akış
+    st.divider()
+    for msg in reversed(st.session_state.chat_history):
+        st.markdown(f"**Kaynak:** {msg['src']}")
+        st.success(f"**Çeviri:** {msg['trg']}")
+        st.divider()
 
 # --- MOD 3: DOSYA ---
 def show_file():
-    t = TEXTS[st.session_state.app_lang]
-    st.markdown('<div class="back-btn">', unsafe_allow_html=True)
-    if st.button(t["back"]): st.session_state.current_page = "home"; st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    st.header(t["m3"].replace("\n", " "))
+    with st.sidebar:
+        if st.button("⬅️ Menüye Dön"): st.session_state.page = "home"; st.rerun()
+        st.header("📂 Dosya Ayarları")
+        target_lang = st.selectbox("Hedef Dil", ["Türkçe", "English", "Deutsch"])
+        mode = st.radio("İşlem", ["Sadece Çevir", "Çevir ve Özetle"])
+
+    st.markdown("### 📂 Ses Dosyası Yükle")
     f = st.file_uploader("MP3/WAV", type=['mp3','wav'])
-    if f and st.button(t["analyze"]):
-        with st.spinner(t["analyzing"]):
+    
+    if f and st.button("İşlemi Başlat"):
+        with st.spinner("Dosya işleniyor..."):
             txt = client.audio.transcriptions.create(file=("a.wav", f), model="whisper-large-v3").text
-            res = get_ai_response(txt, "Analyze this audio text.", "Turkish")
-            st.info(res)
-
-# --- MOD 4: WEB ANALİZ (YENİ) ---
-def show_web():
-    t = TEXTS[st.session_state.app_lang]
-    
-    # Geri Dön
-    st.markdown('<div class="back-btn">', unsafe_allow_html=True)
-    if st.button(t["back"]): st.session_state.current_page = "home"; st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    st.header(f"🔗 {t['web_title']}")
-    st.write(t["web_desc"])
-    
-    # URL Girişi
-    url_input = st.text_input("URL:", placeholder=t["url_ph"])
-    
-    if st.button(t["analyze"], type="primary", use_container_width=True):
-        if url_input and "http" in url_input:
-            with st.spinner(t["analyzing"]):
-                # 1. Siteyi Oku
-                web_text = scrape_website(url_input)
+            
+            if mode == "Sadece Çevir":
+                res = get_translation(txt, target_lang, "Normal")
+                st.subheader("Çeviri:")
+                st.write(res)
+            else:
+                # Çevir ve Özetle
+                trans = get_translation(txt, target_lang, "Normal")
+                summ = get_analysis(trans, target_lang)
                 
-                if web_text and len(web_text) > 50:
-                    # 2. AI'a Gönder
-                    system_msg = """
-                    Sen bir web analistisin. Verilen metni analiz et.
-                    GÖREVLER:
-                    1. İçeriğin Özetini Çıkar (3-4 madde).
-                    2. Ana fikirleri ve önemli noktaları listele.
-                    3. İçeriği Hedef Dile Çevir (Özet olarak).
-                    """
-                    target = "Turkish" if st.session_state.app_lang == "Türkçe" else "English"
-                    
-                    analysis = get_ai_response(web_text, system_msg, target)
-                    
-                    # 3. Sonucu Göster
-                    st.success("✅ Analiz Tamamlandı!")
-                    st.markdown(f"""
-                    <div style="background-color:#f9f9f9; padding:20px; border-radius:10px; border:1px solid #ddd;">
-                        {analysis}
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    # 4. Sesli Oku (Opsiyonel)
-                    audio_data = create_audio(analysis[:200], "tr") # Sadece başını oku
-                    if audio_data: st.audio(audio_data, format="audio/mp3")
-                    
-                else:
-                    st.error("Site içeriği okunamadı veya çok kısa. (Bazı siteler bot korumalı olabilir).")
-        else:
-            st.warning(t["err_url"])
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.subheader("Çeviri")
+                    st.write(trans)
+                with c2:
+                    st.subheader("Analiz & Özet")
+                    st.info(summ)
 
-# --- ROUTER ---
-if st.session_state.current_page == "home": show_home()
-elif st.session_state.current_page == "chat": show_chat()
-elif st.session_state.current_page == "conf": show_conf()
-elif st.session_state.current_page == "file": show_file()
-elif st.session_state.current_page == "web": show_web()
+# --- MOD 4: WEB (Sadece gerektiğinde analiz) ---
+def show_web():
+    with st.sidebar:
+        if st.button("⬅️ Menüye Dön"): st.session_state.page = "home"; st.rerun()
+        st.header("🔗 Web Ayarları")
+        target_lang = st.selectbox("Rapor Dili", ["Türkçe", "English"])
+
+    st.markdown("### 🔗 Web Sitesi Okuyucu")
+    url = st.text_input("URL Girin (http://...)")
+    
+    if st.button("Siteyi Oku ve Özetle"):
+        if url:
+            with st.spinner("Siteye bağlanılıyor..."):
+                try:
+                    # Web Scraping
+                    page = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+                    soup = BeautifulSoup(page.content, 'html.parser')
+                    raw_text = " ".join([p.get_text() for p in soup.find_all(['p', 'h1', 'h2'])])[:8000] # Limit
+                    
+                    # Analiz
+                    summ = get_analysis(raw_text, target_lang)
+                    st.success("✅ Analiz Tamamlandı")
+                    st.markdown(summ)
+                    
+                except Exception as e:
+                    st.error(f"Site okunamadı: {e}")
+
+# --- YÖNLENDİRİCİ ---
+if st.session_state.page == "home": show_home()
+elif st.session_state.page == "chat": show_chat()
+elif st.session_state.page == "conf": show_conf()
+elif st.session_state.page == "file": show_file()
+elif st.session_state.page == "web": show_web()
