@@ -6,7 +6,7 @@ import io
 
 st.set_page_config(page_title="AI Çevirmen", layout="centered")
 
-st.title("🗣️ Sesli AI Çevirmen")
+st.title("🎨 Görsel & Sesli AI Çevirmen")
 
 # --- GÜVENLİK ---
 try:
@@ -17,8 +17,7 @@ except:
 
 client = Groq(api_key=api_key)
 
-# --- HAFIZA (SESSION STATE) ---
-# Eğer hafıza yoksa oluştur, varsa eskisini kullan
+# --- HAFIZA ---
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
@@ -28,22 +27,18 @@ with st.sidebar:
     user_mode = st.selectbox("Mod:", ("Resmi", "Samimi", "Turist", "Agresif"))
     target_lang_name = st.selectbox("Hedef Dil:", ("İngilizce", "Türkçe", "Almanca", "İspanyolca", "Fransızca"))
     
-    # Seslendirme için dil kodları
-    lang_codes = {
-        "İngilizce": "en",
-        "Türkçe": "tr",
-        "Almanca": "de",
-        "İspanyolca": "es",
-        "Fransızca": "fr"
-    }
+    # Görsel Özelliği Aç/Kapa
+    show_images = st.toggle("🖼️ Görsel Oluşturmayı Aç", value=True)
+
+    lang_codes = {"İngilizce": "en", "Türkçe": "tr", "Almanca": "de", "İspanyolca": "es", "Fransızca": "fr"}
     target_lang_code = lang_codes[target_lang_name]
 
-    if st.button("🗑️ Sohbeti Temizle"):
+    if st.button("🗑️ Temizle"):
         st.session_state.chat_history = []
         st.rerun()
 
 # --- MİKROFON ---
-st.write("Mikrofona basıp konuşun:")
+st.write("Mikrofona basıp konuşun (Örn: 'Kırmızı bir elma istiyorum'):")
 audio_bytes = audio_recorder(
     text="",
     recording_color="#e8b62c",
@@ -54,10 +49,9 @@ audio_bytes = audio_recorder(
 
 # --- İŞLEM ---
 if audio_bytes:
-    # Sadece yeni bir kayıt varsa işlem yap
-    with st.spinner('Çevriliyor...'):
+    with st.spinner('Yapay Zeka düşünüyor ve çiziyor...'):
         try:
-            # 1. Ses Dosyasını Hazırla
+            # 1. Ses Dosyası
             audio_file = io.BytesIO(audio_bytes)
             audio_file.name = "audio.wav"
             
@@ -68,8 +62,27 @@ if audio_bytes:
                 response_format="text"
             )
             
-            # 3. Llama (Çevirme)
-            system_prompt = f"Sen çevirmensin. Mod: {user_mode}. Hedef: {target_lang_name}. Sadece çeviriyi yaz."
+            # 3. Llama (Çevirme + Görsel Tespit)
+            # Yapay zekaya özel formatta cevap vermesini söylüyoruz
+            system_prompt = f"""
+            Sen bir çevirmensin. 
+            Mod: {user_mode}. 
+            Hedef Dil: {target_lang_name}.
+            
+            GÖREVİN:
+            1. Metni çevir.
+            2. Metin içinde görselleştirilebilecek somut bir nesne varsa onu İngilizce tek kelime olarak bul.
+            
+            CEVAP FORMATI (Kesinlikle buna uy):
+            Çevrilmiş Metin ||| Görsel_Kelimesi_Ingilizce
+            
+            Örnek: 
+            Kullanıcı: "Kırmızı bir elma istiyorum"
+            Sen: I want a red apple ||| red apple
+            
+            Eğer somut nesne yoksa sadece çeviriyi yaz.
+            """
+            
             completion = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[
@@ -77,7 +90,20 @@ if audio_bytes:
                     {"role": "user", "content": transcription}
                 ],
             )
-            translation = completion.choices[0].message.content
+            
+            full_response = completion.choices[0].message.content
+            
+            # Cevabı parçala (||| işaretinden böl)
+            if "|||" in full_response:
+                parts = full_response.split("|||")
+                translation = parts[0].strip()
+                image_keyword = parts[1].strip()
+                # Görsel URL'si oluştur (Pollinations AI kullanarak - Ücretsiz)
+                image_url = f"https://image.pollinations.ai/prompt/{image_keyword}?nologo=true"
+            else:
+                translation = full_response
+                image_url = None
+                image_keyword = None
 
             # 4. Seslendirme (TTS)
             tts = gTTS(text=translation, lang=target_lang_code, slow=False)
@@ -89,17 +115,25 @@ if audio_bytes:
             st.session_state.chat_history.append({
                 "user": transcription,
                 "ai": translation,
-                "audio": audio_io
+                "audio": audio_io,
+                "image": image_url,
+                "keyword": image_keyword
             })
             
         except Exception as e:
             st.error(f"Hata: {str(e)}")
 
-# --- EKRANA YAZDIRMA (Sohbet Görünümü) ---
-# En yeniden eskiye doğru göstermek için ters çevirip döngüye sokuyoruz
+# --- EKRAN GÖRÜNÜMÜ ---
 for chat in reversed(st.session_state.chat_history):
     with st.container(border=True):
-        st.info(f"🎤 **Sen:** {chat['user']}")
-        st.success(f"🤖 **Çeviri:** {chat['ai']}")
-        # Ses oynatıcı
-        st.audio(chat['audio'], format="audio/mp3")
+        col1, col2 = st.columns([3, 1]) # Ekranı ikiye böl: Yazı ve Resim
+        
+        with col1:
+            st.info(f"🎤 **Sen:** {chat['user']}")
+            st.success(f"🤖 **Çeviri:** {chat['ai']}")
+            st.audio(chat['audio'], format="audio/mp3")
+        
+        with col2:
+            # Eğer görsel varsa ve ayar açıksa göster
+            if chat['image'] and show_images:
+                st.image(chat['image'], caption=chat['keyword'], use_container_width=True)
