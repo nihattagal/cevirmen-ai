@@ -1,6 +1,6 @@
 import streamlit as st
 from groq import Groq
-from audio_recorder_streamlit import audio_recorder # Yeni kütüphane
+from audio_recorder_streamlit import audio_recorder # <-- YENİSİ BU OLMALI
 import io
 
 st.set_page_config(page_title="AI Çevirmen", layout="centered")
@@ -24,10 +24,9 @@ except:
     st.error("API Anahtarı hatalı.")
     st.stop()
 
-st.write("Mikrofon butonuna basarak kaydı başlatın, tekrar basarak durdurun:")
+st.write("Mikrofon butonuna basarak konuşun (Kayıt başlar), tekrar basarak durdurun (Çeviri yapar):")
 
 # --- YENİ KAYDEDİCİ ---
-# Bu kaydedici sesi direkt hafızaya (bytes) alır
 audio_bytes = audio_recorder(
     text="",
     recording_color="#e8b62c",
@@ -42,8 +41,7 @@ if audio_bytes:
     
     with st.spinner('Çevriliyor...'):
         try:
-            # Sesi API'ye göndermek için dosya formatına çeviriyoruz
-            # (BytesIO kullanarak sanal bir dosya oluşturuyoruz)
+            # BytesIO ile dosyayı sanal olarak oluşturuyoruz
             audio_file = io.BytesIO(audio_bytes)
             audio_file.name = "audio.wav"
             
