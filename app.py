@@ -11,127 +11,133 @@ import urllib.parse
 
 # --- 1. GENEL AYARLAR ---
 st.set_page_config(
-    page_title="LinguaFlow Pro",
-    page_icon="🧠",
+    page_title="LinguaFlow Elite",
+    page_icon="💎",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- 2. CSS TASARIM (PREMIUM SAAS GÖRÜNÜMÜ) ---
+# --- 2. CSS TASARIM (WHATSAPP TARZI & MODERN) ---
 st.markdown("""
     <style>
-    /* Genel Yapı */
-    .stApp { background-color: #f9fafb; font-family: 'Inter', sans-serif; }
+    .stApp { background-color: #f0f2f5; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
     
-    /* Başlık Stili */
+    /* Başlık */
     .header-logo { 
-        font-size: 2.2rem; font-weight: 800; color: #0f172a; 
-        text-align: center; letter-spacing: -0.5px; margin-bottom: 5px;
+        font-size: 2rem; font-weight: 800; color: #111b21; 
+        text-align: center; margin-top: -20px; letter-spacing: -0.5px;
     }
-    .header-sub { text-align: center; color: #64748b; margin-bottom: 30px; font-size: 0.95rem; }
     
-    /* Metin Alanları */
+    /* Metin Alanı */
     .stTextArea textarea {
-        border: 1px solid #e2e8f0; border-radius: 12px;
-        font-size: 1.1rem; height: 280px !important; padding: 15px;
-        background: white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-        resize: none; transition: border 0.3s;
+        border: 1px solid #dadce0; border-radius: 8px;
+        font-size: 1.1rem; height: 250px !important; padding: 15px;
+        background: white; resize: none;
     }
-    .stTextArea textarea:focus { border-color: #3b82f6; outline: none; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+    .stTextArea textarea:focus { border-color: #00a884; box-shadow: 0 0 0 2px rgba(0, 168, 132, 0.2); }
     
     /* Sonuç Kutusu */
     .result-box {
-        background-color: white; border: 1px solid #e2e8f0; border-radius: 12px;
-        min-height: 280px; padding: 20px; font-size: 1.1rem; color: #334155;
-        white-space: pre-wrap; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); position: relative;
+        background-color: white; border: 1px solid #dadce0; border-radius: 8px;
+        min-height: 250px; padding: 20px; font-size: 1.1rem; color: #111b21;
+        white-space: pre-wrap; position: relative;
     }
     
-    /* Butonlar */
-    div.stButton > button {
-        background-color: #0f172a; color: white; border: none; border-radius: 8px;
-        padding: 12px; font-weight: 600; width: 100%; transition: all 0.2s;
-        box-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.1);
-    }
-    div.stButton > button:hover { 
-        background-color: #334155; transform: translateY(-1px); 
-        box-shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.1);
-    }
-    
-    /* İkincil Butonlar */
-    .secondary-btn div.stButton > button {
-        background-color: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; box-shadow: none;
-    }
-    .secondary-btn div.stButton > button:hover { background-color: #e2e8f0; color: #1e293b; }
-
     /* Dil Etiketi */
     .lang-badge {
         position: absolute; top: 10px; right: 10px;
-        background: #eff6ff; color: #2563eb; padding: 4px 10px;
-        border-radius: 20px; font-size: 0.75rem; font-weight: 700;
+        background: #e7fce3; color: #135c2c; padding: 4px 10px;
+        border-radius: 12px; font-size: 0.75rem; font-weight: 700;
     }
+    
+    /* Butonlar (Yeşil Tema) */
+    div.stButton > button {
+        background-color: #008069; color: white; border: none; border-radius: 20px;
+        padding: 10px 20px; font-weight: 600; width: 100%; transition: all 0.2s;
+    }
+    div.stButton > button:hover { background-color: #00a884; transform: translateY(-1px); }
+    
+    /* İkincil Butonlar */
+    .secondary-btn div.stButton > button {
+        background-color: #e9edef; color: #54656f;
+    }
+    .secondary-btn div.stButton > button:hover { background-color: #d1d7db; color: #111b21; }
+
+    /* Sohbet Baloncukları (WhatsApp Tarzı) */
+    .msg-container { display: flex; flex-direction: column; gap: 10px; padding: 10px; }
+    
+    .chat-bubble-me {
+        align-self: flex-end; background-color: #d9fdd3; 
+        padding: 10px 15px; border-radius: 10px 0 10px 10px;
+        max-width: 80%; box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        margin-left: auto; text-align: right; color: #111b21;
+    }
+    
+    .chat-bubble-you {
+        align-self: flex-start; background-color: #ffffff; 
+        padding: 10px 15px; border-radius: 0 10px 10px 10px;
+        max-width: 80%; box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        margin-right: auto; text-align: left; color: #111b21;
+    }
+    
+    .bubble-meta { font-size: 0.75rem; color: #667781; margin-top: 5px; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. API KONTROLÜ ---
+# --- 3. API ---
 try:
     client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 except:
-    st.error("⚠️ API Anahtarı Bulunamadı! Secrets ayarlarını kontrol edin.")
+    st.error("⚠️ API Key Eksik!")
     st.stop()
 
-# --- 4. STATE YÖNETİMİ (HATASIZ BAŞLANGIÇ) ---
+# --- 4. STATE ---
 if "history" not in st.session_state: st.session_state.history = []
+if "chat_messages" not in st.session_state: st.session_state.chat_messages = [] # Sohbet modu için özel hafıza
 if "res_text" not in st.session_state: st.session_state.res_text = ""
 if "input_val" not in st.session_state: st.session_state.input_val = ""
 if "detected_lang" not in st.session_state: st.session_state.detected_lang = ""
-if "stats_trans" not in st.session_state: st.session_state.stats_trans = 0
-if "target_lang_idx" not in st.session_state: st.session_state.target_lang_idx = 0
+if "total_words" not in st.session_state: st.session_state.total_words = 0
 
-# --- 5. MOTOR (GÜÇLENDİRİLMİŞ) ---
-def ai_engine(text, task, target_lang="English", tone="Normal", glossary=""):
-    if not text or len(text.strip()) == 0: return "", ""
+# --- 5. MOTOR ---
+def ai_engine(text, task, target_lang="English", tone="Normal", glossary="", extra_prompt=""):
+    if not text: return "", ""
     
     # İstatistik
-    st.session_state.stats_trans += 1
+    st.session_state.total_words += len(text.split())
     
-    glossary_prompt = f"TERMİNOLOJİ (Uygula): \n{glossary}" if glossary else ""
+    glossary_prompt = f"TERMİNOLOJİ: \n{glossary}" if glossary else ""
 
-    # Prompt Mühendisliği
     if task == "translate":
         sys_msg = f"""
-        Sen uzman bir tercümansın.
-        Hedef Dil: {target_lang}. Ton: {tone}.
+        Sen uzman tercümansın. Hedef: {target_lang}. Ton: {tone}.
         {glossary_prompt}
-        GÖREV: Metni çevir.
-        KURAL: Asla açıklama yapma.
-        ÇIKTI FORMATI: [ALGILANAN_DİL] ||| ÇEVİRİ
+        GÖREV: Kaynak dili algıla ve çevir.
+        ÇIKTI: [ALGILANAN_DİL] ||| METİN
         """
     elif task == "improve":
-        sys_msg = "Sen profesyonel bir editörsün. Metni gramer, akıcılık ve stil açısından düzelt. Format: [DİL] ||| DÜZELTİLMİŞ_METİN"
+        sys_msg = "Editörsün. Metni düzelt. Format: [DİL] ||| METİN"
     elif task == "summarize":
-        sys_msg = f"Sen bir analistsin. Metni {target_lang} dilinde özetle. Önemli noktaları madde madde yaz."
+        sys_msg = f"Analistsin. Metni {target_lang} dilinde özetle. Format: [ÖZET] ||| METİN"
+    elif task == "custom": # Dosya modu için esnek görev
+        sys_msg = f"Sen bir asistansın. Görev: {extra_prompt}. Hedef Dil: {target_lang}. Format: [ANALİZ] ||| METİN"
 
     try:
-        # Token Limiti Koruması (Çok uzun metinleri kırp)
-        safe_text = text[:25000] 
-        
         res = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": safe_text}]
+            messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": text[:20000]}]
         )
         full_res = res.choices[0].message.content
         
-        # Cevap Ayrıştırma
         if "|||" in full_res:
-            parts = full_res.split("|||", 1)
-            return parts[0].strip().replace("[", "").replace("]", ""), parts[1].strip()
+            lang_tag, content = full_res.split("|||", 1)
+            return lang_tag.strip().replace("[", "").replace("]", ""), content.strip()
         else:
-            return "Otomatik", full_res
+            return "AI", full_res
 
     except Exception as e: return "Hata", str(e)
 
 def create_audio(text, lang_name, speed=False):
-    if not text: return None
     code_map = {"Türkçe": "tr", "İngilizce": "en", "Almanca": "de", "Fransızca": "fr", "İspanyolca": "es", "Rusça": "ru", "Arapça": "ar", "Çince": "zh"}
     lang_code = code_map.get(lang_name, "en")
     try:
@@ -142,9 +148,9 @@ def create_audio(text, lang_name, speed=False):
 
 def render_share(text):
     if not text: return
-    encoded = urllib.parse.quote(text[:500]) # Paylaşım için çok uzun metinleri kırp
+    encoded = urllib.parse.quote(text)
     wa = f"https://api.whatsapp.com/send?text={encoded}"
-    st.markdown(f"<a href='{wa}' target='_blank' style='text-decoration:none; color:#25D366; font-weight:bold; font-size:0.9rem;'>📲 WhatsApp ile Paylaş</a>", unsafe_allow_html=True)
+    st.markdown(f"<a href='{wa}' target='_blank' style='text-decoration:none; color:#00a884; font-weight:bold; font-size:0.85rem;'>📲 WhatsApp'ta Paylaş</a>", unsafe_allow_html=True)
 
 def local_read_file(file):
     try:
@@ -156,13 +162,9 @@ def local_read_file(file):
 
 def local_read_web(url):
     try:
-        # Güçlü User-Agent (Bot engellerini aşmak için)
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-        response = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(response.content, 'html.parser')
-        # Sadece okunabilir metinleri al
-        paragraphs = soup.find_all(['p', 'h1', 'h2', 'h3', 'li'])
-        return " ".join([p.get_text() for p in paragraphs])
+        h = {'User-Agent': 'Mozilla/5.0'}
+        soup = BeautifulSoup(requests.get(url, headers=h, timeout=10).content, 'html.parser')
+        return " ".join([p.get_text() for p in soup.find_all(['p', 'h1', 'h2'])])[:15000]
     except: return None
 
 # ==========================================
@@ -171,46 +173,43 @@ def local_read_web(url):
 
 # --- YAN MENÜ ---
 with st.sidebar:
-    st.title("LinguaFlow")
+    st.markdown("### 📊 İstatistik")
+    st.info(f"**İşlenen Kelime:** {st.session_state.total_words}")
     
-    sb1, sb2 = st.tabs(["Ayarlar", "Geçmiş"])
-    
-    with sb1:
-        st.subheader("Tercihler")
-        speech_slow = st.checkbox("🐢 Yavaş Okuma", value=False)
-        
-        st.subheader("Sözlük (Terminoloji)")
-        glossary_txt = st.text_area("Örn: LinguaFlow=Özel Proje", height=80, placeholder="Kelime=Çeviri")
-        
-        st.info(f"📊 Toplam İşlem: {st.session_state.stats_trans}")
+    st.divider()
+    st.markdown("### ⚙️ Ayarlar")
+    speech_slow = st.checkbox("🐢 Yavaş Okuma", value=False)
+    with st.expander("📚 Sözlük"):
+        glossary_txt = st.text_area("Örn: Lingua=Dil", height=70)
 
-    with sb2:
-        if st.session_state.history:
-            for item in st.session_state.history[:8]:
-                st.markdown(f"<div style='font-size:0.8rem; padding:8px; border-bottom:1px solid #eee; color:#64748b;'>{item['src']}</div>", unsafe_allow_html=True)
-            if st.button("Temizle"): st.session_state.history = []; st.rerun()
-        else: st.caption("Geçmiş boş.")
+    st.divider()
+    st.markdown("### 🕒 Metin Geçmişi")
+    if st.session_state.history:
+        for item in st.session_state.history[:5]:
+            st.caption(f"• {item['src']}")
+        if st.button("Temizle", key="cl_hist"):
+            st.session_state.history = []
+            st.rerun()
 
 # --- BAŞLIK ---
-st.markdown('<div class="header-logo">LinguaFlow Pro</div><div class="header-sub">Yapay Zeka Destekli Dil Merkezi</div>', unsafe_allow_html=True)
+st.markdown('<div class="header-logo">LinguaFlow Elite</div>', unsafe_allow_html=True)
 
 # --- SEKMELER ---
-tab_text, tab_voice, tab_files, tab_web = st.tabs(["📝 Metin", "🎙️ Canlı Ses", "📂 Dosya", "🔗 Web"])
+tab_text, tab_voice, tab_files, tab_web = st.tabs(["📝 Metin Çeviri", "💬 Canlı Sohbet", "📂 Dosya & PDF", "🔗 Web"])
 LANG_OPTIONS = ["English", "Türkçe", "Deutsch", "Français", "Español", "Italiano", "Русский", "العربية", "中文"]
 
 # --- 1. METİN ---
 with tab_text:
     c1, c2, c3, c4 = st.columns([3, 1, 3, 1])
-    with c1: st.markdown("**Giriş**")
+    with c1: st.markdown("**Kaynak (Otomatik)**")
     with c3: 
-        # Session state ile dil seçimini hatırla
-        target_lang = st.selectbox("Hedef", LANG_OPTIONS, index=st.session_state.target_lang_idx, key="t_lang_select", label_visibility="collapsed")
+        if "target_idx" not in st.session_state: st.session_state.target_idx = 0
+        target_lang = st.selectbox("Hedef", LANG_OPTIONS, index=st.session_state.target_idx, label_visibility="collapsed")
     
     with c2:
         st.markdown('<div class="secondary-btn">', unsafe_allow_html=True)
         if st.button("⇄"):
-             # Basit swap: İngilizce <-> Türkçe
-             st.session_state.target_lang_idx = 1 if st.session_state.target_lang_idx == 0 else 0
+             st.session_state.target_idx = 1 if st.session_state.target_idx == 0 else 0
              st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -219,16 +218,14 @@ with tab_text:
     with col_in:
         # Dikte
         mc, tc = st.columns([1, 8])
-        with mc: audio_in = audio_recorder(text="", icon_size="2x", recording_color="#ef4444", neutral_color="#cbd5e1", key="dict")
-        with tc: st.caption("Mikrofona basıp konuşabilirsiniz")
+        with mc: audio_in = audio_recorder(text="", icon_size="2x", recording_color="#25D366", neutral_color="#cbd5e1", key="dict")
+        with tc: st.caption("Sesle Yaz")
         
         if audio_in:
-            with st.spinner("Yazılıyor..."):
-                try:
-                    txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(audio_in)), model="whisper-large-v3").text
-                    st.session_state.input_val = txt
-                    st.rerun()
-                except: st.error("Ses algılanamadı.")
+            with st.spinner("..."):
+                txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(audio_in)), model="whisper-large-v3").text
+                st.session_state.input_val = txt
+                st.rerun()
 
         with st.form(key="t_form"):
             input_text = st.text_area("Metin", value=st.session_state.input_val, height=250, label_visibility="collapsed")
@@ -243,13 +240,12 @@ with tab_text:
                 st.session_state.res_text = txt
                 st.session_state.detected_lang = lang
                 st.session_state.input_val = input_text
-                # Geçmiş
                 ts = datetime.datetime.now().strftime("%H:%M")
-                st.session_state.history.insert(0, {"time": ts, "src": input_text[:30]+".."})
+                st.session_state.history.insert(0, {"time": ts, "src": input_text[:20]+".."})
 
     with col_out:
         st.write("") 
-        st.write("") # Hizalama boşlukları
+        st.write("")
         
         res = st.session_state.res_text
         d_lang = st.session_state.detected_lang
@@ -277,61 +273,79 @@ with tab_text:
                 st.markdown('</div>', unsafe_allow_html=True)
             with cc: render_share(res)
 
-# --- 2. SES ---
+# --- 2. SOHBET (WHATSAPP STİLİ) ---
 with tab_voice:
-    mode = st.radio("Mod:", ["🗣️ Sohbet", "🎙️ Konferans"], horizontal=True)
+    st.info("🗣️ Karşılıklı konuşma modudur. Konuşmalar aşağıda balon şeklinde birikir.")
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        st.write(f"🎤 **BEN (Konuş)**")
+        a1 = audio_recorder(text="", icon_size="3x", key="v1", recording_color="#25D366", neutral_color="#e9edef")
+        if a1:
+            txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(a1)), model="whisper-large-v3").text
+            lang, res = ai_engine(txt, "translate", target_lang, glossary=glossary_txt).split("|||")[-1], ai_engine(txt, "translate", target_lang, glossary=glossary_txt)
+            st.session_state.chat_messages.append({"role": "me", "src": txt, "trg": res, "lang": lang})
+    
+    with c2:
+        st.write(f"🎤 **MİSAFİR ({target_lang})**")
+        a2 = audio_recorder(text="", icon_size="3x", key="v2", recording_color="#34b7f1", neutral_color="#e9edef")
+        if a2:
+            txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(a2)), model="whisper-large-v3").text
+            res = ai_engine(txt, "translate", "Türkçe", glossary=glossary_txt).split("|||")[-1] # Sadece metin
+            st.session_state.chat_messages.append({"role": "you", "src": txt, "trg": res, "lang": target_lang})
+
     st.divider()
     
-    if "Sohbet" in mode:
-        c1, c2 = st.columns(2)
-        with c1:
-            st.info("SİZ")
-            a1 = audio_recorder(text="", icon_size="3x", key="v1", recording_color="#3b82f6", neutral_color="#dbeafe")
-            if a1:
-                txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(a1)), model="whisper-large-v3").text
-                lang, res = ai_engine(txt, "translate", target_lang, glossary=glossary_txt)
-                st.success(f"{txt}")
-                st.info(f"{res}")
-                aud = create_audio(res, target_lang, speech_slow)
-                if aud: st.audio(aud, format="audio/mp3", autoplay=True)
-        with c2:
-            st.warning(f"MİSAFİR ({target_lang})")
-            a2 = audio_recorder(text="", icon_size="3x", key="v2", recording_color="#ec4899", neutral_color="#fce7f3")
-            if a2:
-                txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(a2)), model="whisper-large-v3").text
-                lang, res = ai_engine(txt, "translate", "Türkçe", glossary=glossary_txt)
-                st.info(f"{txt}")
-                st.success(f"{res}")
-                aud = create_audio(res, "Türkçe", speech_slow)
-                if aud: st.audio(aud, format="audio/mp3", autoplay=True)
+    # SOHBET GEÇMİŞİNİ GÖSTER
+    if st.session_state.chat_messages:
+        for msg in reversed(st.session_state.chat_messages):
+            if msg['role'] == 'me':
+                st.markdown(f"""
+                <div class="chat-bubble-me">
+                    <div>{msg['src']}</div>
+                    <div style="font-weight:bold; margin-top:5px;">{msg['trg']}</div>
+                    <div class="bubble-meta">Siz • {datetime.datetime.now().strftime('%H:%M')}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div class="chat-bubble-you">
+                    <div>{msg['src']}</div>
+                    <div style="font-weight:bold; margin-top:5px;">{msg['trg']}</div>
+                    <div class="bubble-meta">Misafir • {datetime.datetime.now().strftime('%H:%M')}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+        if st.button("Sohbeti Temizle"):
+            st.session_state.chat_messages = []
+            st.rerun()
 
-    else: # Konferans
-        c1, c2 = st.columns([1, 3])
-        with c1:
-            st.write("Sürekli Dinleme")
-            ac = audio_recorder(text="BAŞLAT / DURDUR", icon_size="2x", recording_color="#dc2626", pause_threshold=20.0)
-        with c2:
-            if ac:
-                with st.spinner("Analiz..."):
-                    txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(ac)), model="whisper-large-v3").text
-                    lang, trans = ai_engine(txt, "translate", target_lang, glossary=glossary_txt)
-                    st.success(f"Orijinal: {txt}")
-                    st.info(f"Çeviri: {trans}")
-                    st.download_button("İndir", f"{txt}\n{trans}", "toplanti.txt")
-
-# --- 3. DOSYA ---
+# --- 3. DOSYA (GÖREV SEÇİCİ) ---
 with tab_files:
     u_file = st.file_uploader("Dosya", type=['pdf', 'mp3', 'wav', 'm4a'])
     if u_file:
-        if st.button("Analiz Et"):
+        c_act, c_lang = st.columns(2)
+        with c_act:
+            action = st.selectbox("Ne Yapılsın?", ["Çevir", "Özetle", "Gramer Kontrolü", "Maddeler Halinde Listele"])
+        with c_lang:
+            f_target = st.selectbox("Hedef Dil", LANG_OPTIONS, key="f_tgt")
+            
+        if st.button("Başlat"):
             with st.spinner("..."):
                 raw = local_read_file(u_file)
-                if raw and len(raw)>10:
-                    mode = "translate" if len(raw) < 3000 else "summarize"
-                    lang, res = ai_engine(raw, mode, target_lang, glossary=glossary_txt)
+                if raw:
+                    # Görev haritası
+                    prompt_map = {
+                        "Çevir": f"Metni {f_target} diline çevir.",
+                        "Özetle": f"Metni {f_target} dilinde özetle.",
+                        "Gramer Kontrolü": "Metindeki hataları bul ve düzelt.",
+                        "Maddeler Halinde Listele": f"Metindeki ana fikirleri {f_target} dilinde madde madde yaz."
+                    }
+                    
+                    lang, res = ai_engine(raw, "custom", f_target, extra_prompt=prompt_map[action])
                     st.markdown(f"<div class='result-box'>{res}</div>", unsafe_allow_html=True)
                     st.download_button("İndir", res, "sonuc.txt")
-                else: st.error("Dosya okunamadı.")
+                else: st.error("Hata.")
 
 # --- 4. WEB ---
 with tab_web:
