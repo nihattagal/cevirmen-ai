@@ -52,10 +52,9 @@ with st.sidebar:
     }
     target_lang_code = lang_codes[target_lang_name]
 
-    # --- İNDİRME BUTONU (HATA DÜZELTİLDİ: .get() kullanıldı) ---
+    # İndirme Butonu
     chat_text = ""
     for chat in st.session_state.chat_history:
-        # Eski kayıtlarda 'mood' yoksa 'Nötr' varsayalım
         mood_info = chat.get('mood', 'Nötr')
         chat_text += f"Kaynak: {chat['user']}\nAnaliz: {mood_info}\nÇeviri: {chat['ai']}\n-------------------\n"
     
@@ -75,11 +74,11 @@ st.divider()
 
 if work_mode == "⚡ Telsiz Modu (Sohbet)":
     st.info("💡 **Sohbet Modu:** Bas-Konuş. Kısa diyaloglar için.")
-    icon_color = "#e8b62c" # Sarı
+    icon_color = "#e8b62c" 
     pause_limit = 2.0 
 else:
     st.warning("🔴 **Konferans Modu:** SÜREKLİ DİNLEME. 'Bitir' diyene kadar kapanmaz.")
-    icon_color = "#FF0000" # Kırmızı
+    icon_color = "#FF0000" 
     pause_limit = 300.0 
 
 col1, col2, col3 = st.columns([1, 10, 1])
@@ -109,20 +108,22 @@ if audio_bytes:
                 response_format="text"
             )
             
-            # C. Çevir + Analiz Et (Llama Prompt)
+            # C. Çevir + Analiz Et (GELİŞMİŞ PROMPT)
             system_prompt = f"""
             Sen uzman bir tercüman ve psikologsun.
             Hedef Dil: {target_lang_name}.
             
             GÖREVİN:
-            1. Metindeki duygu durumunu tek kelimeyle analiz et (Örn: Kızgın, Mutlu, Ciddi, Heyecanlı, Üzgün, Nötr).
+            1. Metindeki duygu durumunu tek kelimeyle analiz et.
             2. Metni hedef dile çevir.
             
-            CEVAP FORMATI (Kesinlikle buna uy):
-            DUYGU_DURUMU ||| ÇEVRİLMİŞ_METİN
+            KURALLAR:
+            - Eğer kullanıcı "Alo", "Test", "Ses kontrol" diyorsa veya sadece teknik konuşuyorsa DUYGU yerine "Nötr" yaz.
+            - Asla duygu uydurma. Emin değilsen "Nötr" yaz.
+            - Duygular şunlar olabilir: Kızgın, Mutlu, Ciddi, Heyecanlı, Üzgün, Nötr, Şaşkın.
             
-            Örnek:
-            Mutlu ||| Hello, how are you today?
+            CEVAP FORMATI (Buna uy):
+            DUYGU_DURUMU ||| ÇEVRİLMİŞ_METİN
             """
 
             completion = client.chat.completions.create(
@@ -166,37 +167,26 @@ st.divider()
 mood_icons = {
     "Kızgın": "😡", "Öfkeli": "😡", "Sinirli": "😠",
     "Mutlu": "😊", "Sevinçli": "😁", "Heyecanlı": "🤩",
-    "Üzgün": "😢", "Endişeli": "😟",
+    "Üzgün": "😢", "Endişeli": "😟", "Kırgın": "💔",
     "Ciddi": "😐", "Resmi": "👔",
-    "Nötr": "😶"
+    "Şaşkın": "😲",
+    "Nötr": "😶", "Normal": "😶"
 }
 
 for chat in reversed(st.session_state.chat_history):
     with st.container():
-        # HATA DÜZELTİLDİ: .get() kullanarak güvenli veri çekme
         current_mood = chat.get('mood', 'Nötr')
         
-        # İkon seçimi
         icon = "😶"
         for key, val in mood_icons.items():
             if key in current_mood:
                 icon = val
                 break
         
-        # 1. Satır: Kaynak Ses
+        # 1. Satır
         st.markdown(f"""
         <div style="margin-bottom: 5px;">
             <span style="color: gray; font-size: 12px;">Duyulan:</span><br>
             <i>"{chat['user']}"</i>
         </div>
-        """, unsafe_allow_html=True)
-        
-        # 2. Satır: Çeviri + Duygu
-        st.info(f"{icon} **Duygu:** {current_mood}")
-        
-        # 3. Satır: Kopyalanabilir Çeviri
-        st.code(chat['ai'], language=None)
-        
-        # 4. Satır: Ses Oynatıcı
-        st.audio(chat['audio'], format="audio/mp3")
-        st.divider()
+        """, unsaf
