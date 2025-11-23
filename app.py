@@ -8,13 +8,13 @@ import datetime
 # --- SAYFA AYARLARI ---
 st.set_page_config(
     page_title="AI Canlı Tercüman",
-    page_icon="🎙️",
+    page_icon="🧠",
     layout="centered"
 )
 
 # --- BAŞLIK ---
 st.markdown("""
-    <h1 style='text-align: center; color: #FF4B4B;'>🎙️ AI Canlı Tercüman</h1>
+    <h1 style='text-align: center; color: #4B0082;'>🧠 Empatik AI Tercüman</h1>
 """, unsafe_allow_html=True)
 
 # --- GÜVENLİK ---
@@ -38,31 +38,29 @@ with st.sidebar:
     work_mode = st.radio(
         "Nasıl çalışsın?",
         ("⚡ Telsiz Modu (Sohbet)", "🔴 Konferans Modu (Sürekli)"),
-        help="Telsiz: Kısa cümleler için.\nKonferans: Sen durdurana kadar kapanmaz."
+        help="Telsiz: Kısa cümleler.\nKonferans: 5 dk boyunca dinler."
     )
     
     st.divider()
     
-    st.subheader("Davranış")
-    user_style = st.selectbox("Çeviri Tarzı:", ("Resmi", "Samimi", "Turist", "Özet Çıkar"))
-    
-    target_lang_name = st.selectbox("Hedef Dil:", ("İngilizce", "Türkçe", "Almanca", "İspanyolca", "Fransızca", "Rusça", "Arapça"))
+    target_lang_name = st.selectbox("Hedef Dil:", ("İngilizce", "Türkçe", "Almanca", "İspanyolca", "Fransızca", "Rusça", "Arapça", "Japonca", "Çince"))
     
     lang_codes = {
         "İngilizce": "en", "Türkçe": "tr", "Almanca": "de", 
-        "İspanyolca": "es", "Fransızca": "fr", "Rusça": "ru", "Arapça": "ar"
+        "İspanyolca": "es", "Fransızca": "fr", "Rusça": "ru", 
+        "Arapça": "ar", "Japonca": "ja", "Çince": "zh"
     }
     target_lang_code = lang_codes[target_lang_name]
 
     # İndirme Butonu
     chat_text = ""
     for chat in st.session_state.chat_history:
-        chat_text += f"🗣️ Kaynak: {chat['user']}\n🤖 Çeviri: {chat['ai']}\n-------------------\n"
+        chat_text += f"Kaynak: {chat['user']}\nAnaliz: {chat['mood']}\nÇeviri: {chat['ai']}\n-------------------\n"
     
     st.download_button(
-        label="📥 Kayıtları İndir (TXT)",
+        label="📥 Dökümü İndir (TXT)",
         data=chat_text,
-        file_name=f"konusma_gecmisi_{datetime.datetime.now().strftime('%H%M')}.txt",
+        file_name=f"konusma_{datetime.datetime.now().strftime('%H%M')}.txt",
         mime="text/plain"
     )
 
@@ -74,17 +72,14 @@ with st.sidebar:
 st.divider()
 
 if work_mode == "⚡ Telsiz Modu (Sohbet)":
-    st.info("💡 **Sohbet Modu:** Kısa konuşmalar. Duraksarsan otomatik durabilir.")
-    mic_text_start = "Konuş"
+    st.info("💡 **Sohbet Modu:** Bas-Konuş. Kısa diyaloglar için.")
     icon_color = "#e8b62c" # Sarı
-    pause_limit = 2.0 # 2 saniye susarsan kapat
+    pause_limit = 2.0 
 else:
-    st.warning("🔴 **Konferans Modu:** SÜREKLİ DİNLEME AKTİF. Sen butona tekrar basana kadar (veya 5 dk sessizlik olana kadar) kapanmaz.")
-    mic_text_start = "Sürekli Dinlemeyi Başlat"
+    st.warning("🔴 **Konferans Modu:** SÜREKLİ DİNLEME. 'Bitir' diyene kadar kapanmaz.")
     icon_color = "#FF0000" # Kırmızı
-    pause_limit = 300.0 # 300 saniye (5 dakika) susarsan kapat (Neredeyse sonsuz)
+    pause_limit = 300.0 
 
-# Ortalanmış Mikrofon
 col1, col2, col3 = st.columns([1, 10, 1])
 with col2:
     audio_bytes = audio_recorder(
@@ -93,18 +88,13 @@ with col2:
         neutral_color="#333333",
         icon_name="microphone",
         icon_size="5x",
-        pause_threshold=pause_limit, # <-- İŞTE SİHİRLİ DOKUNUŞ BURASI
+        pause_threshold=pause_limit,
         sample_rate=44100
     )
-    
-    if audio_bytes:
-        st.caption("✅ Kayıt alındı, işleniyor...")
-    else:
-        st.caption(f"👆 {mic_text_start} için bas")
 
 # --- İŞLEM ---
 if audio_bytes:
-    with st.spinner('Uzun ses kaydı işleniyor, lütfen bekleyin...'):
+    with st.spinner('Ses analizi ve duygu tespiti yapılıyor...'):
         try:
             # A. Sesi Hazırla
             audio_file = io.BytesIO(audio_bytes)
@@ -117,18 +107,22 @@ if audio_bytes:
                 response_format="text"
             )
             
-            # C. Çevir (Llama)
-            if work_mode == "🔴 Konferans Modu (Sürekli)":
-                system_prompt = f"""
-                Sen profesyonel bir simultane tercümansın. 
-                Kullanıcı uzun bir konuşma yaptı veya ortam sesi kaydedildi.
-                Mod: {user_style}. Hedef Dil: {target_lang_name}.
-                Görevin:
-                1. Tüm konuşmayı anlam bütünlüğünü bozmadan akıcı bir şekilde çevir.
-                2. Metin çok uzunsa ana fikri kaybetmeden özetleyerek çevir.
-                """
-            else:
-                system_prompt = f"Çevirmen. Mod: {user_style}. Hedef: {target_lang_name}. Sadece çeviriyi ver."
+            # C. Çevir + Analiz Et (Llama Prompt)
+            # Yapay zekadan özel bir formatta cevap istiyoruz: "DUYGU ||| ÇEVİRİ"
+            system_prompt = f"""
+            Sen uzman bir tercüman ve psikologsun.
+            Hedef Dil: {target_lang_name}.
+            
+            GÖREVİN:
+            1. Metindeki duygu durumunu tek kelimeyle analiz et (Örn: Kızgın, Mutlu, Ciddi, Heyecanlı, Üzgün, Nötr).
+            2. Metni hedef dile çevir.
+            
+            CEVAP FORMATI (Kesinlikle buna uy):
+            DUYGU_DURUMU ||| ÇEVRİLMİŞ_METİN
+            
+            Örnek:
+            Mutlu ||| Hello, how are you today?
+            """
 
             completion = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
@@ -137,9 +131,18 @@ if audio_bytes:
                     {"role": "user", "content": transcription}
                 ],
             )
-            translation = completion.choices[0].message.content
+            full_response = completion.choices[0].message.content
 
-            # D. Seslendir (TTS)
+            # Cevabı Parçala (Duygu ve Metni ayır)
+            if "|||" in full_response:
+                parts = full_response.split("|||")
+                mood = parts[0].strip()
+                translation = parts[1].strip()
+            else:
+                mood = "Nötr"
+                translation = full_response
+
+            # D. Seslendir
             tts = gTTS(text=translation, lang=target_lang_code, slow=False)
             audio_fp = io.BytesIO()
             tts.write_to_fp(audio_fp)
@@ -149,6 +152,7 @@ if audio_bytes:
             st.session_state.chat_history.append({
                 "user": transcription,
                 "ai": translation,
+                "mood": mood,
                 "audio": audio_data
             })
             
@@ -157,17 +161,41 @@ if audio_bytes:
 
 # --- SOHBET GÖRÜNÜMÜ ---
 st.divider()
+
+# Duygulara göre renk/ikon sözlüğü
+mood_icons = {
+    "Kızgın": "😡", "Öfkeli": "😡", "Sinirli": "😠",
+    "Mutlu": "😊", "Sevinçli": "😁", "Heyecanlı": "🤩",
+    "Üzgün": "😢", "Endişeli": "😟",
+    "Ciddi": "😐", "Resmi": "👔",
+    "Nötr": "😶"
+}
+
 for chat in reversed(st.session_state.chat_history):
     with st.container():
+        # Duygu İkonunu Bul
+        current_mood = chat['mood']
+        # Basit bir eşleştirme yap, bulamazsa varsayılan ikon koy
+        icon = "😶"
+        for key, val in mood_icons.items():
+            if key in current_mood:
+                icon = val
+                break
+        
+        # 1. Satır: Kaynak Ses
         st.markdown(f"""
-        <div style="border-left: 5px solid #FF4B4B; padding-left: 10px; margin-bottom: 5px;">
-            <small style="color: gray;">Kaynak:</small><br>
-            <span style="font-size: 18px;">{chat['user']}</span>
-        </div>
-        <div style="border-left: 5px solid #28a745; padding-left: 10px; margin-bottom: 10px; background-color: #f9f9f9;">
-            <small style="color: gray;">Çeviri ({target_lang_name}):</small><br>
-            <span style="font-size: 20px; font-weight: bold;">{chat['ai']}</span>
+        <div style="margin-bottom: 5px;">
+            <span style="color: gray; font-size: 12px;">Duyulan:</span><br>
+            <i>"{chat['user']}"</i>
         </div>
         """, unsafe_allow_html=True)
+        
+        # 2. Satır: Çeviri + Duygu (Renkli Kutu)
+        st.info(f"{icon} **Duygu:** {chat['mood']}")
+        
+        # 3. Satır: Kopyalanabilir Çeviri Metni (st.code otomatik kopyalama butonu sağlar!)
+        st.code(chat['ai'], language=None)
+        
+        # 4. Satır: Ses Oynatıcı
         st.audio(chat['audio'], format="audio/mp3")
         st.divider()
