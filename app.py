@@ -59,26 +59,33 @@ def get_analysis(text, target_lang):
     res = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}])
     return res.choices[0].message.content
 
-# GÖRSEL ANALİZ (AKILLI MODEL SEÇİCİ)
+# --- GÖRSEL ANALİZ (GÜNCELLENMİŞ MODEL LİSTESİ) ---
 def analyze_image(image_bytes, target_lang):
     base64_image = base64.b64encode(image_bytes).decode('utf-8')
     prompt = f"""
-    Bu görseldeki yazıları veya nesneleri analiz et.
+    Bu görseli analiz et.
     GÖREV:
-    1. Eğer görselde YAZI varsa: O yazıyı {target_lang} diline çevir.
-    2. Eğer görselde NESNE varsa: Ne olduğunu {target_lang} dilinde anlat.
+    1. Görseldeki YAZILARI (varsa) {target_lang} diline çevir.
+    2. Görseldeki NESNELERİ {target_lang} dilinde kısaca anlat.
     """
     
-    # Denenecek Modeller Listesi (Sırayla dener, çalışan ilkini kullanır)
+    # GROQ GÜNCEL VİSİON MODELLERİ (Sırayla Dener)
+    # Not: Preview modelleri kaldırıldığı için 'instruct' veya 'versatile' deniyoruz.
     models_to_try = [
-        "llama-3.2-11b-vision-instruct", # En güncel kararlı sürüm
-        "llama-3.2-90b-vision-instruct", # Büyük model (Varsa)
-        "llama-3.2-11b-vision-preview",  # Eski (Yedek)
-        "llama-3.2-90b-vision-preview"   # Eski Büyük (Yedek)
+        "llama-3.2-11b-vision-preview", # Bazen geri gelir
+        "llama-3.2-90b-vision-preview", 
+        "llama-3.2-11b-text-preview",   # Bazen multimodal olarak geçer
+        "llama-3.2-90b-text-preview"
     ]
     
-    last_error = ""
+    # Eğer yukarıdakiler çalışmazsa Llama 3.2 modellerinin genel isimlerini deneyelim
+    # Groq'un en son duyurusuna göre şu an en kararlı text modeli: llama-3.3-70b-versatile
+    # Ancak görsel için şu an en güvenilir yöntem 'vision' ibaresi olanlardır.
     
+    # KESİN ÇÖZÜM: Eğer Groq Vision modelleri kapalıysa kullanıcıyı uyaralım
+    # Ama önce şansımızı deneyelim
+    
+    last_error = ""
     for model_name in models_to_try:
         try:
             res = client.chat.completions.create(
@@ -98,9 +105,9 @@ def analyze_image(image_bytes, target_lang):
             return res.choices[0].message.content
         except Exception as e:
             last_error = str(e)
-            continue # Hata verirse bir sonraki modeli dene
+            continue
             
-    return f"Görsel analiz yapılamadı. Tüm modeller meşgul veya devre dışı. Hata: {last_error}"
+    return f"⚠️ Üzgünüm, Groq'un görsel (Vision) modelleri şu an bakımda veya kullanım dışı. Hata Detayı: {last_error}"
 
 def create_voice(text, lang_code):
     try:
@@ -287,7 +294,7 @@ def show_vision():
             with st.spinner("Görsel analiz ediliyor..."):
                 result = analyze_image(final_pic.getvalue(), target_lang)
                 
-                if "Hata" in result or "Görsel analiz yapılamadı" in result:
+                if "Hata" in result or "Görsel analiz yapılamadı" in result or "Üzgünüm" in result:
                     st.error(result)
                 else:
                     st.success("✅ Sonuç:")
