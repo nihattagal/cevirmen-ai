@@ -8,8 +8,8 @@ from bs4 import BeautifulSoup
 import PyPDF2
 import datetime
 import urllib.parse
-import difflib # Fark analizi için
-import random # Alıştırma modu için
+import difflib
+import random
 
 # --- 1. GENEL AYARLAR ---
 st.set_page_config(
@@ -19,18 +19,16 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. CSS TASARIM (AKADEMİK & MODERN) ---
+# --- 2. CSS TASARIM ---
 st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
     
-    /* Başlık */
     .header-logo { 
         font-size: 2.2rem; font-weight: 800; color: #1e293b; 
         text-align: center; letter-spacing: -0.5px; margin-top: -20px;
     }
     
-    /* Metin Kutuları */
     .stTextArea textarea {
         border: 1px solid #cbd5e1; border-radius: 12px;
         font-size: 1.1rem; height: 250px !important; padding: 15px;
@@ -38,19 +36,16 @@ st.markdown("""
     }
     .stTextArea textarea:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2); }
     
-    /* Sonuç Kutusu */
     .result-box {
         background-color: white; border: 1px solid #cbd5e1; border-radius: 12px;
         min-height: 250px; padding: 20px; font-size: 1.1rem; color: #334155;
         white-space: pre-wrap; box-shadow: 0 2px 4px rgba(0,0,0,0.02);
     }
     
-    /* Diff (Fark) Görünümü */
     .diff-container { background: white; padding: 20px; border-radius: 12px; border: 1px solid #cbd5e1; font-family: monospace; }
     .diff-del { background-color: #fecaca; text-decoration: line-through; color: #991b1b; padding: 2px 4px; border-radius: 4px; }
     .diff-add { background-color: #bbf7d0; color: #166534; padding: 2px 4px; border-radius: 4px; font-weight: bold; }
     
-    /* Flashcard (Alıştırma) */
     .flashcard {
         background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
         color: white; padding: 40px; border-radius: 20px; text-align: center;
@@ -61,7 +56,6 @@ st.markdown("""
         background: white; color: #1e293b; border: 2px solid #e2e8f0;
     }
 
-    /* Butonlar */
     div.stButton > button {
         background-color: #0f172a; color: white; border: none; border-radius: 8px;
         padding: 12px; font-weight: 600; width: 100%; transition: all 0.2s;
@@ -105,7 +99,6 @@ def ai_engine(text, task, target_lang="English", tone="Normal", glossary=""):
         )
         result = res.choices[0].message.content
         
-        # Geçmişe Ekle
         if task == "translate":
             ts = datetime.datetime.now().strftime("%d/%m")
             st.session_state.history.insert(0, {"ts": ts, "src": text, "trg": result})
@@ -114,7 +107,6 @@ def ai_engine(text, task, target_lang="English", tone="Normal", glossary=""):
     except Exception as e: return f"Hata: {e}"
 
 def generate_diff(original, corrected):
-    """İki metin arasındaki farkları HTML olarak döndürür"""
     d = difflib.Differ()
     diff = list(d.compare(original.split(), corrected.split()))
     html = []
@@ -127,12 +119,13 @@ def generate_diff(original, corrected):
             html.append(token[2:])
     return " ".join(html)
 
-def create_audio(text, lang_name):
+# --- DÜZELTİLEN FONKSİYON BURASI ---
+def create_audio(text, lang_name, speed=False): # speed parametresi eklendi
     code_map = {"Türkçe": "tr", "İngilizce": "en", "Almanca": "de", "Fransızca": "fr", "Español": "es", "Rusça": "ru", "Arapça": "ar", "Çince": "zh"}
     lang_code = code_map.get(lang_name, "en")
     try:
         fp = io.BytesIO()
-        gTTS(text=text, lang=lang_code, slow=False).write_to_fp(fp)
+        gTTS(text=text, lang=lang_code, slow=speed).write_to_fp(fp) # speed buraya aktarılıyor
         return fp.getvalue()
     except: return None
 
@@ -155,15 +148,14 @@ def local_read_web(url):
 # ARAYÜZ
 # ==========================================
 
-# --- YAN MENÜ ---
 with st.sidebar:
     st.title("LinguaFlow")
-    st.caption("Academy Edition v26.0")
+    st.caption("Academy Edition v26.1")
     
     st.markdown("### ⚙️ Ayarlar")
-    # Detaylı Hız Ayarı (Sadece görsel, gTTS kütüphanesi True/False destekler ama kullanıcı kontrol hissi sever)
-    speed_opt = st.select_slider("Konuşma Hızı", options=["Çok Yavaş", "Yavaş", "Normal"], value="Normal")
-    is_slow = True if speed_opt != "Normal" else False
+    # Hız Ayarı (Boolean'a çevriliyor)
+    speed_opt = st.select_slider("Konuşma Hızı", options=["Yavaş", "Normal"], value="Normal")
+    is_slow = True if speed_opt == "Yavaş" else False
     
     with st.expander("📚 Sözlük"):
         glossary_txt = st.text_area("Örn: AI=Yapay Zeka", height=70)
@@ -175,14 +167,12 @@ with st.sidebar:
             st.caption(f"{item['src'][:20]}.. → {item['trg'][:20]}..")
         if st.button("Temizle"): st.session_state.history = []; st.rerun()
 
-# --- BAŞLIK ---
 st.markdown('<div class="header-logo">LinguaFlow Academy</div>', unsafe_allow_html=True)
 
-# --- SEKMELER ---
 tab_text, tab_practice, tab_voice, tab_files, tab_web = st.tabs(["📝 Metin & Analiz", "🧠 Alıştırma", "🎙️ Ses", "📂 Dosya", "🔗 Web"])
 LANG_OPTIONS = ["English", "Türkçe", "Deutsch", "Français", "Español", "Italiano", "Русский", "العربية", "中文"]
 
-# --- 1. METİN & ANALİZ ---
+# --- 1. METİN ---
 with tab_text:
     c1, c2, c3 = st.columns([3, 1, 3])
     with c1: st.markdown("**Giriş**")
@@ -199,7 +189,7 @@ with tab_text:
                 if input_text:
                     with st.spinner("..."):
                         st.session_state.res_text = ai_engine(input_text, "translate", target_lang, "Normal", glossary_txt)
-                        st.session_state.diff_html = "" # Diff sıfırla
+                        st.session_state.diff_html = ""
                         st.session_state.input_val = input_text
         with b2:
             if st.button("🔍 Hataları Bul (Diff)"):
@@ -207,12 +197,10 @@ with tab_text:
                     with st.spinner("İnceleniyor..."):
                         corrected = ai_engine(input_text, "improve")
                         st.session_state.res_text = corrected
-                        # Farkı hesapla
                         st.session_state.diff_html = generate_diff(input_text, corrected)
         with b3: tone = st.selectbox("Ton", ["Normal", "Resmi"], label_visibility="collapsed")
 
     with col_out:
-        # Eğer Diff Modu açıksa onu göster, değilse normal metni
         if st.session_state.diff_html:
             st.markdown(f"<div class='diff-container'>{st.session_state.diff_html}</div>", unsafe_allow_html=True)
             st.caption("🔴 Silinen  🟢 Eklenen")
@@ -224,11 +212,12 @@ with tab_text:
                 st.write("")
                 ca, cb = st.columns([1, 4])
                 with ca:
+                    # DÜZELTİLEN ÇAĞRI: is_slow artık tanımlı
                     aud = create_audio(res, target_lang, is_slow)
                     if aud: st.audio(aud, format="audio/mp3")
                 with cb: st.code(res, language=None)
 
-# --- 2. ALIŞTIRMA (FLASHCARDS) ---
+# --- 2. ALIŞTIRMA ---
 with tab_practice:
     if len(st.session_state.history) < 3:
         st.info("🧠 Alıştırma yapmak için önce 'Metin' sekmesinde en az 3 çeviri yapmalısınız.")
@@ -242,8 +231,6 @@ with tab_practice:
             
             if st.session_state.flashcard_idx >= 0:
                 card = st.session_state.history[st.session_state.flashcard_idx]
-                
-                # Soru Kartı
                 st.markdown(f"<div class='flashcard'>{card['src']}</div>", unsafe_allow_html=True)
                 
                 if st.button("👁️ Cevabı Göster"):
