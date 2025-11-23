@@ -6,28 +6,32 @@ import io
 import requests
 from bs4 import BeautifulSoup
 import PyPDF2
-import base64
 
 # --- 1. GENEL AYARLAR ---
 st.set_page_config(page_title="AI Tercüman Pro", page_icon="🌐", layout="wide")
 
-# CSS TASARIM
+# CSS TASARIM (KARTLAR VE RENKLER)
 st.markdown("""
     <style>
     .main-header { font-size: 2.5rem; font-weight: 800; color: #333; text-align: center; margin-bottom: 30px; }
+    
+    /* Kart Butonlar */
     div.stButton > button {
-        width: 100%; height: 120px; font-size: 1rem; font-weight: bold;
-        border-radius: 12px; border: 1px solid #ddd; background: white;
+        width: 100%; height: 130px; font-size: 1.1rem; font-weight: bold;
+        border-radius: 15px; border: 1px solid #ddd; background: white;
         box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: 0.3s;
     }
     div.stButton > button:hover {
         transform: translateY(-5px); border-color: #4B0082; color: #4B0082; background: #f8f9fa;
+        box-shadow: 0 8px 15px rgba(0,0,0,0.1);
     }
+    /* Geri Dön Butonu */
     .back-area div.stButton > button { height: auto; width: auto; background: #eee; font-size: 1rem; padding: 5px 15px; }
     
-    .chat-row { padding: 10px; border-radius: 8px; margin-bottom: 5px; }
-    .source-box { background: #e3f2fd; border-left: 4px solid #2196F3; }
-    .target-box { background: #fbe9e7; border-right: 4px solid #FF5722; text-align: right; }
+    /* Mesaj Balonları */
+    .chat-row { padding: 15px; border-radius: 10px; margin-bottom: 8px; }
+    .source-box { background: #e3f2fd; border-left: 5px solid #2196F3; }
+    .target-box { background: #fbe9e7; border-right: 5px solid #FF5722; text-align: right; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -43,9 +47,36 @@ except:
     st.error("API Key eksik! Lütfen Secrets ayarlarını yapın.")
     st.stop()
 
-# --- FONKSİYONLAR ---
+# --- YEREL FONKSİYONLAR (SENİN KAYNAKLARIN) ---
+def local_read_pdf(file):
+    """PDF dosyasını yerel işlemciyle okur"""
+    reader = PyPDF2.PdfReader(file)
+    text = ""
+    for page in reader.pages:
+        text += page.extract_text() + "\n"
+    return text
+
+def local_read_web(url):
+    """Web sitesini yerel işlemciyle okur"""
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        page = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(page.content, 'html.parser')
+        # Sadece metinleri al
+        return " ".join([p.get_text() for p in soup.find_all(['p', 'h1', 'h2'])])
+    except Exception as e:
+        return None
+
+# --- AI FONKSİYONLARI (SADECE BEYİN) ---
 def get_translation(text, target_lang, tone, style_prompt=""):
-    system_prompt = f"Sen tercümansın. Hedef: {target_lang}. Ton: {tone}. {style_prompt}. Sadece çeviriyi ver."
+    system_prompt = f"""
+    Sen profesyonel bir tercümansın.
+    GÖREVİN: Verilen metni {target_lang} diline çevirmek.
+    KURALLAR:
+    1. Ton: {tone}.
+    2. {style_prompt}
+    3. Sadece çeviriyi ver. Yorum yapma.
+    """
     try:
         res = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -55,59 +86,9 @@ def get_translation(text, target_lang, tone, style_prompt=""):
     except Exception as e: return f"Hata: {e}"
 
 def get_analysis(text, target_lang):
-    prompt = f"Asistansın. Analiz et. Dil: {target_lang}. Çıktı: 1.Özet 2.Ana Fikirler 3.Görevler\nMetin: {text}"
+    prompt = f"Sen bir asistansın. Metni analiz et. Rapor Dili: {target_lang}. ÇIKTI: 1.Özet 2.Ana Fikirler 3.Görevler\nMetin: {text[:15000]}" # Token limiti için kırpma
     res = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}])
     return res.choices[0].message.content
-
-# --- GÖRSEL ANALİZ (GÜNCELLENMİŞ MODEL LİSTESİ) ---
-def analyze_image(image_bytes, target_lang):
-    base64_image = base64.b64encode(image_bytes).decode('utf-8')
-    prompt = f"""
-    Bu görseli analiz et.
-    GÖREV:
-    1. Görseldeki YAZILARI (varsa) {target_lang} diline çevir.
-    2. Görseldeki NESNELERİ {target_lang} dilinde kısaca anlat.
-    """
-    
-    # GROQ GÜNCEL VİSİON MODELLERİ (Sırayla Dener)
-    # Not: Preview modelleri kaldırıldığı için 'instruct' veya 'versatile' deniyoruz.
-    models_to_try = [
-        "llama-3.2-11b-vision-preview", # Bazen geri gelir
-        "llama-3.2-90b-vision-preview", 
-        "llama-3.2-11b-text-preview",   # Bazen multimodal olarak geçer
-        "llama-3.2-90b-text-preview"
-    ]
-    
-    # Eğer yukarıdakiler çalışmazsa Llama 3.2 modellerinin genel isimlerini deneyelim
-    # Groq'un en son duyurusuna göre şu an en kararlı text modeli: llama-3.3-70b-versatile
-    # Ancak görsel için şu an en güvenilir yöntem 'vision' ibaresi olanlardır.
-    
-    # KESİN ÇÖZÜM: Eğer Groq Vision modelleri kapalıysa kullanıcıyı uyaralım
-    # Ama önce şansımızı deneyelim
-    
-    last_error = ""
-    for model_name in models_to_try:
-        try:
-            res = client.chat.completions.create(
-                model=model_name,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                        ]
-                    }
-                ],
-                temperature=0.5,
-                max_tokens=1024,
-            )
-            return res.choices[0].message.content
-        except Exception as e:
-            last_error = str(e)
-            continue
-            
-    return f"⚠️ Üzgünüm, Groq'un görsel (Vision) modelleri şu an bakımda veya kullanım dışı. Hata Detayı: {last_error}"
 
 def create_voice(text, lang_code):
     try:
@@ -130,13 +111,14 @@ def show_home():
             
     st.markdown('<div class="main-header">🌐 AI Tercüman Pro</div>', unsafe_allow_html=True)
     
+    # 5 KARTLI MENÜ
+    # İlk satır 3 kart
     c1, c2, c3 = st.columns(3)
-    c4, c5, c6 = st.columns(3)
     
     if st.session_state.app_lang == "Türkçe":
-        titles = ["🗣️ Karşılıklı Sohbet", "🎙️ Simültane Konferans", "📂 Ses Dosyası", "🔗 Web Analiz", "📄 Belge Asistanı", "📸 Görsel Çeviri"]
+        titles = ["🗣️ Karşılıklı Sohbet", "🎙️ Simültane Konferans", "📂 Ses Dosyası", "🔗 Web Analiz", "📄 Belge Asistanı"]
     else:
-        titles = ["🗣️ Dual Chat", "🎙️ Live Conference", "📂 Audio File", "🔗 Web Reader", "📄 Doc Assistant", "📸 Photo Translate"]
+        titles = ["🗣️ Dual Chat", "🎙️ Live Conference", "📂 Audio File", "🔗 Web Reader", "📄 Doc Assistant"]
 
     with c1: 
         if st.button(titles[0], use_container_width=True): st.session_state.page = "chat"; st.rerun()
@@ -144,12 +126,13 @@ def show_home():
         if st.button(titles[1], use_container_width=True): st.session_state.page = "conf"; st.rerun()
     with c3: 
         if st.button(titles[2], use_container_width=True): st.session_state.page = "file"; st.rerun()
+    
+    # İkinci satır 2 kart (Ortalanmış)
+    c_empty, c4, c5, c_empty2 = st.columns([0.5, 1, 1, 0.5])
     with c4: 
         if st.button(titles[3], use_container_width=True): st.session_state.page = "web"; st.rerun()
     with c5: 
         if st.button(titles[4], use_container_width=True): st.session_state.page = "doc"; st.rerun()
-    with c6:
-        if st.button(titles[5], use_container_width=True): st.session_state.page = "vision"; st.rerun()
 
 # --- MOD 1: SOHBET ---
 def show_chat():
@@ -248,14 +231,17 @@ def show_web():
     st.markdown("### 🔗 Web Okuyucu")
     url = st.text_input("URL")
     if st.button("Analiz Et") and url:
-        with st.spinner("Bağlanılıyor..."):
-            try:
-                page = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
-                soup = BeautifulSoup(page.content, 'html.parser')
-                raw = " ".join([p.get_text() for p in soup.find_all(['p', 'h1'])])[:8000]
-                summ = get_analysis(raw, target_lang)
-                st.success("✅ Analiz Tamamlandı"); st.markdown(summ)
-            except Exception as e: st.error(f"Hata: {e}")
+        with st.spinner("Site yerel olarak okunuyor..."):
+            # 1. YEREL İŞLEM (Web Scraping)
+            raw_text = local_read_web(url)
+            
+            if raw_text and len(raw_text) > 50:
+                # 2. AI İŞLEM (Sadece analiz)
+                summ = get_analysis(raw_text, target_lang)
+                st.success("✅ Analiz Tamamlandı")
+                st.markdown(summ)
+            else:
+                st.error("Site içeriği okunamadı (Bot koruması olabilir).")
 
 # --- MOD 5: BELGE ---
 def show_doc():
@@ -266,41 +252,17 @@ def show_doc():
 
     st.markdown("### 📄 PDF Asistanı")
     doc_file = st.file_uploader("PDF Yükle", type=['pdf'])
+    
     if doc_file:
-        reader = PyPDF2.PdfReader(doc_file)
-        doc_text = "".join([page.extract_text() for page in reader.pages])
+        with st.spinner("PDF okunuyor..."):
+            # 1. YEREL İŞLEM (PDF Parsing)
+            doc_text = local_read_pdf(doc_file)
+            st.info(f"Belge okundu: {len(doc_text)} karakter.")
+            
         if st.button("Özetle"):
-            with st.spinner("Okunuyor..."):
-                st.markdown(get_analysis(doc_text[:10000], target_lang))
-
-# --- MOD 6: GÖRSEL ---
-def show_vision():
-    with st.sidebar:
-        if st.button("⬅️ Menüye Dön"): st.session_state.page = "home"; st.rerun()
-        st.header("📸 Görsel")
-        target_lang = st.selectbox("Hedef Dil", ["Türkçe", "English", "Deutsch", "Français"])
-
-    st.markdown("### 📸 Görsel/Kamera Çeviri")
-    st.info("Bir tabela, menü veya herhangi bir resim yükleyin/çekin.")
-    
-    cam_pic = st.camera_input("Fotoğraf Çek")
-    file_pic = st.file_uploader("Veya Galeriden Yükle", type=['jpg', 'png', 'jpeg'])
-    
-    final_pic = cam_pic if cam_pic else file_pic
-    
-    if final_pic:
-        st.image(final_pic, caption="Görsel", width=300)
-        if st.button("🖼️ Çevir", type="primary"):
-            with st.spinner("Görsel analiz ediliyor..."):
-                result = analyze_image(final_pic.getvalue(), target_lang)
-                
-                if "Hata" in result or "Görsel analiz yapılamadı" in result or "Üzgünüm" in result:
-                    st.error(result)
-                else:
-                    st.success("✅ Sonuç:")
-                    st.markdown(f"<div style='background-color:#f9fbe7; padding:20px; border-radius:10px;'>{result}</div>", unsafe_allow_html=True)
-                    audio = create_voice(result[:200], "tr")
-                    if audio: st.audio(audio, format="audio/mp3")
+            with st.spinner("AI Analiz Ediyor..."):
+                # 2. AI İŞLEM
+                st.markdown(get_analysis(doc_text, target_lang))
 
 # --- ROUTER ---
 if st.session_state.page == "home": show_home()
@@ -309,4 +271,3 @@ elif st.session_state.page == "conf": show_conf()
 elif st.session_state.page == "file": show_file()
 elif st.session_state.page == "web": show_web()
 elif st.session_state.page == "doc": show_doc()
-elif st.session_state.page == "vision": show_vision()
