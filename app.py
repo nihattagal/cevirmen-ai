@@ -13,18 +13,18 @@ st.title("🎤 AI Canlı Çevirmen")
 with st.sidebar:
     st.header("⚙️ Ayarlar")
     
-    # API Anahtarı Girişi (Güvenlik için şifreli giriş)
+    # API Anahtarı
     api_key = st.text_input("Groq API Anahtarınızı Girin:", type="password")
     
     st.divider()
     
-    # Kullanıcı Modu Seçimi
+    # Mod Seçimi
     user_mode = st.selectbox(
         "Çeviri Modu Seçin:",
         ("Resmi (İş Görüşmesi)", "Samimi (Arkadaş Ortamı)", "Turist (Basit ve Net)", "Agresif (Tartışma)")
     )
     
-    # Hedef Dil Seçimi
+    # Hedef Dil
     target_lang = st.selectbox(
         "Hangi Dile Çevrilecek?",
         ("İngilizce", "Türkçe", "Almanca", "İspanyolca", "Fransızca", "Japonca")
@@ -32,7 +32,7 @@ with st.sidebar:
 
     st.info("Not: Mikrofon butonuna basarak konuşun, durdurduğunuzda çeviri otomatik başlar.")
 
-# Ana Ekran Akışı
+# Ana Ekran Mantığı
 if not api_key:
     st.warning("Lütfen sol menüden Groq API anahtarınızı girin.")
     st.stop()
@@ -47,25 +47,26 @@ except Exception as e:
 audio = audiorecorder("Mikrofonu Başlat", "Kaydı Durdur")
 
 if len(audio) > 0:
-    # Sesi geçici olarak kaydet
-    st.audio(audio.export().read())
+    # Sesi dosyaya kaydet
     audio.export("temp_audio.wav", format="wav")
+    st.audio(audio.export().read())
     
     with st.spinner('Ses analizi yapılıyor ve çevriliyor...'):
         try:
             # 1. Adım: Sesi Yazıya Dökme (Whisper)
+            # Dosyayı binary modda açıp gönderiyoruz
             with open("temp_audio.wav", "rb") as file:
                 transcription = client.audio.transcriptions.create(
-                file=(filename, file.read()),
-                model="whisper-large-v3",
-                response_format="text"
-            )
+                    file=("temp_audio.wav", file.read()), # Düzeltilen kısım burası
+                    model="whisper-large-v3",
+                    response_format="text"
+                )
             
             detected_text = transcription
             st.success("Algılanan Konuşma:")
             st.write(f"🗣️ {detected_text}")
             
-            # 2. Adım: Çeviri ve Kişilik (Llama 3)
+            # 2. Adım: Çeviri (Llama 3)
             system_prompt = f"""
             Sen profesyonel bir çevirmensin. 
             Kullanıcının seçtiği mod: {user_mode}.
@@ -73,8 +74,7 @@ if len(audio) > 0:
             
             Görevlerin:
             1. Gelen metni hedef dile çevir.
-            2. Bunu yaparken seçilen moda uygun bir ton kullan.
-            3. Sadece çeviriyi ver, başka açıklama yapma.
+            2. Sadece çeviriyi ver, başka açıklama yapma.
             """
             
             completion = client.chat.completions.create(
