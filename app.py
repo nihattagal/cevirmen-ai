@@ -3,6 +3,7 @@ from groq import Groq
 from audio_recorder_streamlit import audio_recorder
 from gtts import gTTS
 import io
+import random  # Resimler her seferinde farklı olsun diye ekledik
 
 st.set_page_config(page_title="AI Çevirmen", layout="centered")
 
@@ -27,7 +28,6 @@ with st.sidebar:
     user_mode = st.selectbox("Mod:", ("Resmi", "Samimi", "Turist", "Agresif"))
     target_lang_name = st.selectbox("Hedef Dil:", ("İngilizce", "Türkçe", "Almanca", "İspanyolca", "Fransızca"))
     
-    # Görsel Özelliği Aç/Kapa
     show_images = st.toggle("🖼️ Görsel Oluşturmayı Aç", value=True)
 
     lang_codes = {"İngilizce": "en", "Türkçe": "tr", "Almanca": "de", "İspanyolca": "es", "Fransızca": "fr"}
@@ -38,7 +38,7 @@ with st.sidebar:
         st.rerun()
 
 # --- MİKROFON ---
-st.write("Mikrofona basıp konuşun (Örn: 'Kırmızı bir elma istiyorum'):")
+st.write("Mikrofona basıp konuşun (Örn: 'Mavi bir gömlek istiyorum'):")
 audio_bytes = audio_recorder(
     text="",
     recording_color="#e8b62c",
@@ -49,7 +49,7 @@ audio_bytes = audio_recorder(
 
 # --- İŞLEM ---
 if audio_bytes:
-    with st.spinner('Yapay Zeka düşünüyor ve çiziyor...'):
+    with st.spinner('Yapay Zeka düşünüyor, çiziyor ve seslendiriyor...'):
         try:
             # 1. Ses Dosyası
             audio_file = io.BytesIO(audio_bytes)
@@ -62,25 +62,20 @@ if audio_bytes:
                 response_format="text"
             )
             
-            # 3. Llama (Çevirme + Görsel Tespit)
-            # Yapay zekaya özel formatta cevap vermesini söylüyoruz
+            # 3. Llama (Çevirme + DETAYLI Görsel Tespiti)
             system_prompt = f"""
             Sen bir çevirmensin. 
             Mod: {user_mode}. 
             Hedef Dil: {target_lang_name}.
             
             GÖREVİN:
-            1. Metni çevir.
-            2. Metin içinde görselleştirilebilecek somut bir nesne varsa onu İngilizce tek kelime olarak bul.
+            1. Metni hedef dile çevir.
+            2. Metin içindeki ana nesneyi SIFATLARIYLA (Renk, Boyut, Şekil) BERABER İngilizce olarak ayıkla.
             
-            CEVAP FORMATI (Kesinlikle buna uy):
-            Çevrilmiş Metin ||| Görsel_Kelimesi_Ingilizce
+            ÖNEMLİ: Sadece 'car' deme, 'red sports car' de. Sadece 'cat' deme, 'cute white cat' de.
             
-            Örnek: 
-            Kullanıcı: "Kırmızı bir elma istiyorum"
-            Sen: I want a red apple ||| red apple
-            
-            Eğer somut nesne yoksa sadece çeviriyi yaz.
+            CEVAP FORMATI (Buna uy):
+            Çevrilmiş Metin ||| Görsel_Tanımı_Ingilizce
             """
             
             completion = client.chat.completions.create(
@@ -93,13 +88,15 @@ if audio_bytes:
             
             full_response = completion.choices[0].message.content
             
-            # Cevabı parçala (||| işaretinden böl)
+            # Cevabı parçala
             if "|||" in full_response:
                 parts = full_response.split("|||")
                 translation = parts[0].strip()
                 image_keyword = parts[1].strip()
-                # Görsel URL'si oluştur (Pollinations AI kullanarak - Ücretsiz)
-                image_url = f"https://image.pollinations.ai/prompt/{image_keyword}?nologo=true"
+                
+                # Görsel URL (Seed ekledik ki her resim benzersiz olsun)
+                seed = random.randint(0, 100000)
+                image_url = f"https://image.pollinations.ai/prompt/{image_keyword}?nologo=true&seed={seed}"
             else:
                 translation = full_response
                 image_url = None
@@ -126,7 +123,7 @@ if audio_bytes:
 # --- EKRAN GÖRÜNÜMÜ ---
 for chat in reversed(st.session_state.chat_history):
     with st.container(border=True):
-        col1, col2 = st.columns([3, 1]) # Ekranı ikiye böl: Yazı ve Resim
+        col1, col2 = st.columns([2, 1]) 
         
         with col1:
             st.info(f"🎤 **Sen:** {chat['user']}")
@@ -134,6 +131,6 @@ for chat in reversed(st.session_state.chat_history):
             st.audio(chat['audio'], format="audio/mp3")
         
         with col2:
-            # Eğer görsel varsa ve ayar açıksa göster
             if chat['image'] and show_images:
+                # Resmi biraz daha büyük ve düzgün göster
                 st.image(chat['image'], caption=chat['keyword'], use_container_width=True)
