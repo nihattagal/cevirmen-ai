@@ -7,6 +7,7 @@ import requests
 from bs4 import BeautifulSoup
 import PyPDF2
 import datetime
+import urllib.parse # Link oluşturmak için gerekli
 
 # --- 1. GENEL AYARLAR ---
 st.set_page_config(
@@ -16,7 +17,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. CSS TASARIM (PREMIUM) ---
+# --- 2. CSS TASARIM (PREMIUM & PAYLAŞIM BUTONLARI) ---
 st.markdown("""
     <style>
     /* Genel */
@@ -27,7 +28,6 @@ st.markdown("""
         font-size: 2rem; font-weight: 800; color: #1e3a8a; 
         margin-bottom: 5px; letter-spacing: -0.5px;
     }
-    .header-sub { color: #64748b; margin-bottom: 25px; font-size: 0.95rem; }
     
     /* Metin Alanı */
     .stTextArea textarea {
@@ -45,26 +45,34 @@ st.markdown("""
         white-space: pre-wrap; box-shadow: 0 2px 4px rgba(0,0,0,0.02);
     }
     
-    /* Butonlar */
+    /* İşlem Butonları */
     div.stButton > button {
         background-color: #1e3a8a; color: white; border: none; border-radius: 8px;
         padding: 12px; font-weight: 600; width: 100%; transition: all 0.2s;
     }
     div.stButton > button:hover { background-color: #1e40af; transform: translateY(-1px); }
     
-    /* İkincil Butonlar (Temizle vs) */
-    .secondary-btn div.stButton > button {
-        background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;
+    /* PAYLAŞIM BUTONLARI (ÖZEL TASARIM) */
+    .share-btn-container {
+        display: flex; gap: 10px; margin-top: 10px;
     }
-    .secondary-btn div.stButton > button:hover { background-color: #e2e8f0; color: #1e293b; }
-
+    .share-link {
+        text-decoration: none; padding: 8px 16px; border-radius: 6px;
+        font-size: 0.9rem; font-weight: bold; color: white !important;
+        display: inline-flex; align-items: center; gap: 5px;
+        transition: opacity 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .share-link:hover { opacity: 0.9; }
+    .whatsapp { background-color: #25D366; }
+    .sms { background-color: #3b82f6; }
+    .email { background-color: #64748b; }
+    
     /* Geçmiş Öğeleri */
     .history-item {
         padding: 10px; margin-bottom: 8px; background: white; border-radius: 8px;
         font-size: 0.85rem; border-left: 4px solid #3b82f6; color: #475569;
         box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     }
-    .history-time { font-size: 0.7rem; color: #94a3b8; margin-bottom: 2px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -72,7 +80,7 @@ st.markdown("""
 try:
     client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 except:
-    st.error("⚠️ API Key Hatası! Lütfen Secrets ayarlarını kontrol edin.")
+    st.error("⚠️ API Key Hatası! Secrets ayarlarını kontrol edin.")
     st.stop()
 
 # --- 4. STATE YÖNETİMİ ---
@@ -106,13 +114,12 @@ def ai_engine(text, task, target_lang="English", tone="Normal"):
         # Geçmişe Kayıt
         timestamp = datetime.datetime.now().strftime("%d/%m %H:%M")
         short_src = (text[:30] + '..') if len(text) > 30 else text
-        # İşlem türüne göre etiket
         icon = "🌍" if task == "translate" else ("✨" if task == "improve" else "📝")
         
         st.session_state.history.insert(0, {
             "time": timestamp,
             "src": short_src,
-            "res": result, # Tam sonucu sakla (ileride detay için)
+            "res": result,
             "type": icon
         })
             
@@ -120,11 +127,7 @@ def ai_engine(text, task, target_lang="English", tone="Normal"):
     except Exception as e: return f"Hata: {e}"
 
 def create_audio(text, lang_name):
-    code_map = {
-        "Türkçe": "tr", "English": "en", "Deutsch": "de", "Français": "fr", 
-        "Español": "es", "Italiano": "it", "Português": "pt", "Polski": "pl",
-        "Русский": "ru", "العربية": "ar", "中文": "zh", "日本語": "ja"
-    }
+    code_map = {"Türkçe": "tr", "English": "en", "Deutsch": "de", "Français": "fr", "Español": "es", "Rusça": "ru", "Arapça": "ar", "Çince": "zh"}
     lang_code = code_map.get(lang_name, "en")
     try:
         fp = io.BytesIO()
@@ -141,6 +144,35 @@ def local_read_file(file):
             return client.audio.transcriptions.create(file=("a.wav", file), model="whisper-large-v3").text
     except: return None
 
+# --- YENİ: PAYLAŞIM FONKSİYONU ---
+def render_share_buttons(text):
+    """Metni paylaşmak için HTML butonları oluşturur"""
+    if not text: return
+    
+    # Metni URL formatına çevir (Özel karakterleri düzeltir)
+    encoded_text = urllib.parse.quote(text)
+    
+    # Linkler
+    whatsapp_url = f"https://api.whatsapp.com/send?text={encoded_text}"
+    # SMS: mobilde çalışır, web'de bazen tepki vermez ama standarttır
+    sms_url = f"sms:?body={encoded_text}" 
+    email_url = f"mailto:?subject=LinguaFlow%20Cevirisi&body={encoded_text}"
+    
+    # HTML Butonlar
+    st.markdown(f"""
+    <div class="share-btn-container">
+        <a href="{whatsapp_url}" target="_blank" class="share-link whatsapp">
+            📱 WhatsApp
+        </a>
+        <a href="{sms_url}" class="share-link sms">
+            💬 SMS/Mesaj
+        </a>
+        <a href="{email_url}" class="share-link email">
+            📧 E-Posta
+        </a>
+    </div>
+    """, unsafe_allow_html=True)
+
 # ==========================================
 # ARAYÜZ
 # ==========================================
@@ -150,28 +182,22 @@ with st.sidebar:
     st.markdown("### 🕒 İşlem Geçmişi")
     
     if st.session_state.history:
-        # Geçmişi listele (En son en üstte)
-        for item in st.session_state.history[:10]:
+        for item in st.session_state.history[:8]:
             st.markdown(f"""
             <div class="history-item">
-                <div class="history-time">{item['time']}</div>
+                <div style="font-size:0.7rem; color:#999">{item['time']}</div>
                 {item['type']} {item['src']}
             </div>
             """, unsafe_allow_html=True)
         
-        st.markdown('<div class="secondary-btn">', unsafe_allow_html=True)
-        if st.button("🗑️ Geçmişi Temizle"):
+        if st.button("🗑️ Temizle"):
             st.session_state.history = []
             st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
     else:
         st.caption("Henüz bir işlem yapılmadı.")
-    
-    st.divider()
-    st.info("💡 **Bilgi:** Sohbet modunda mikrofon uzun süreli (20sn) dinleme yapabilir.")
 
 # --- ÜST BAŞLIK ---
-st.markdown('<div class="header-logo">LinguaFlow Ultimate</div><div class="header-sub">Yapay Zeka Destekli Dil Merkezi</div>', unsafe_allow_html=True)
+st.markdown('<div class="header-logo">LinguaFlow Ultimate</div>', unsafe_allow_html=True)
 
 # --- SEKMELER ---
 tab_text, tab_conf, tab_files, tab_web = st.tabs(["📝 Metin & Yazım", "🎙️ Ortam & Toplantı", "📂 Dosya & Belge", "🔗 Web Analiz"])
@@ -187,7 +213,6 @@ with tab_text:
 
     col_in, col_out = st.columns(2)
     with col_in:
-        # Metin girişini state'e bağladık (Temizleme için)
         input_text = st.text_area("Giriş", value=st.session_state.input_val, height=280, placeholder="Metni buraya yapıştırın...", label_visibility="collapsed")
         
         b1, b2, b3, b4 = st.columns([3, 3, 2, 1])
@@ -196,34 +221,38 @@ with tab_text:
                 if input_text:
                     with st.spinner("Çevriliyor..."):
                         st.session_state.res_text = ai_engine(input_text, "translate", target_lang)
-                        st.session_state.input_val = input_text # State'i koru
+                        st.session_state.input_val = input_text
         with b2:
-            if st.button("✨ Düzelt (Write)"):
+            if st.button("✨ Düzelt"):
                 if input_text:
                     with st.spinner("İyileştiriliyor..."):
                         st.session_state.res_text = ai_engine(input_text, "improve")
         with b3:
             tone = st.selectbox("Ton", ["Normal", "Resmi", "Samimi"], label_visibility="collapsed")
         with b4:
-            st.markdown('<div class="secondary-btn">', unsafe_allow_html=True)
-            if st.button("🗑️"): # Temizle Butonu
+            if st.button("🗑️"): 
                 st.session_state.input_val = ""
                 st.session_state.res_text = ""
                 st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
 
     with col_out:
         res = st.session_state.res_text
         st.markdown(f"""<div class="result-box">{res if res else '<span style="color:#aaa;">Sonuç burada görünecek...</span>'}</div>""", unsafe_allow_html=True)
         
         if res:
+            # Alt Araç Çubuğu (Ses - Kopyala - Paylaş)
             st.write("")
-            ca, cc = st.columns([1, 4])
+            ca, cb = st.columns([1, 3])
             with ca:
                 aud = create_audio(res, target_lang)
                 if aud: st.audio(aud, format="audio/mp3")
-            with cc:
-                st.code(res, language=None)
+            with cb:
+                # PAYLAŞIM VE KOPYALAMA ALANI
+                st.caption("Paylaş:")
+                render_share_buttons(res) # <-- YENİ EKLENEN PAYLAŞIM FONKSİYONU
+                st.write("")
+                with st.expander("Kopyalamak için tıkla"):
+                    st.code(res, language=None)
 
 # --- 2. KONFERANS SEKMESİ ---
 with tab_conf:
@@ -242,16 +271,12 @@ with tab_conf:
                     conf_text = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(audio_conf)), model="whisper-large-v3").text
                     conf_trans = ai_engine(conf_text, "translate", target_lang=conf_target)
                     
-                    # Split View (Yan Yana)
-                    c_src, c_trg = st.columns(2)
-                    with c_src:
-                        st.markdown(f"**🗣️ Duyulan:**")
-                        st.info(conf_text)
-                    with c_trg:
-                        st.markdown(f"**🤖 Çeviri ({conf_target}):**")
-                        st.success(conf_trans)
+                    st.success(f"🗣️ {conf_text}")
+                    st.info(f"🤖 {conf_trans}")
                     
-                    # Dinamik Dosya Adı
+                    # Paylaşım Butonları
+                    render_share_buttons(f"Konuşma: {conf_text}\n\nÇeviri: {conf_trans}")
+                    
                     t_stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
                     st.download_button("📥 Raporu İndir", f"Kaynak: {conf_text}\n\nÇeviri: {conf_trans}", f"Toplanti_{t_stamp}.txt")
                 except: st.error("Ses anlaşılamadı.")
@@ -273,13 +298,15 @@ with tab_files:
                     if raw and len(raw) > 10:
                         mode = "translate" if len(raw) < 3000 else "summarize"
                         st.session_state.f_res = ai_engine(raw, mode, f_target)
-                        st.toast("İşlem Başarılı!", icon="✅")
                     else: st.error("Dosya okunamadı.")
 
         with col_f2:
             if "f_res" in st.session_state:
                 st.success("Sonuç:")
                 st.markdown(f"<div class='result-box'>{st.session_state.f_res}</div>", unsafe_allow_html=True)
+                
+                # Paylaş
+                render_share_buttons(st.session_state.f_res)
                 
                 t_stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
                 st.download_button("📥 İndir", st.session_state.f_res, f"Dosya_Analiz_{t_stamp}.txt")
@@ -300,9 +327,11 @@ with tab_web:
                 st.success("Site Özeti:")
                 st.markdown(f"<div class='result-box'>{web_res}</div>", unsafe_allow_html=True)
                 
+                # Paylaş
+                render_share_buttons(f"Site Özeti ({w_url}):\n\n{web_res}")
+                
                 t_stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
                 st.download_button("📥 İndir", web_res, f"Web_Ozet_{t_stamp}.txt")
             except: st.error("Siteye erişilemedi.")
 
 st.divider()
-st.caption("LinguaFlow AI v7.0 © 2024")
