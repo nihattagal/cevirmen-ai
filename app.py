@@ -94,7 +94,8 @@ tab1, tab2 = st.tabs(["🎙️ Canlı Mikrofon", "📂 Dosya Yükle"])
 
 # --- FONKSİYON: SES İŞLEME MOTORU ---
 def process_audio(audio_file_input, source_name="Mikrofon"):
-    with st.spinner(f'{source_name} işleniyor...'):
+    # Spinner bloğunu burada başlatıyoruz
+    with st.spinner(f'{source_name} işleniyor, lütfen bekleyin...'):
         try:
             # 1. Duy (Whisper)
             transcription = client.audio.transcriptions.create(
@@ -141,7 +142,9 @@ def process_audio(audio_file_input, source_name="Mikrofon"):
                 "mood": mood,
                 "audio": audio_data
             })
-            st.rerun()
+            
+            # DİKKAT: st.rerun() BURADAN KALDIRILDI!
+            # Kod aşağıya akacak ve listeyi güncelleyecektir.
             
         except Exception as e:
             st.error(f"Hata: {str(e)}")
@@ -162,14 +165,13 @@ with tab1:
         mic_audio = audio_recorder(text="", recording_color=icon_color, neutral_color="#333333", icon_name="microphone", icon_size="5x", pause_threshold=pause_limit, sample_rate=44100)
     
     if mic_audio:
-        # --- HATA DÜZELTME KODU (BURASI EKLENDİ) ---
-        # Eğer ses verisi çok küçükse (sadece tıklama sesi gibiyse) işlem yapma
-        if len(mic_audio) > 1000: # 1000 byte alt sınır
+        # HATA KORUMASI: Ses çok kısaysa (tıklama gibi) işleme
+        if len(mic_audio) > 500: 
             audio_file = io.BytesIO(mic_audio)
             audio_file.name = "audio.wav"
             process_audio(audio_file, "Mikrofon")
         else:
-            st.warning("⚠️ Ses çok kısa! Lütfen butona basıp biraz konuşun.")
+            st.warning("⚠️ Ses çok kısa, algılanamadı.")
 
 # --- SEKME 2: DOSYA YÜKLEME ---
 with tab2:
