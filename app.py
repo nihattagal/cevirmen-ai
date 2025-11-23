@@ -6,49 +6,55 @@ import io
 import requests
 from bs4 import BeautifulSoup
 import PyPDF2
+import datetime
 
-# --- 1. GENEL AYARLAR (DeepL Tarzı) ---
-st.set_page_config(page_title="LinguaFlow", page_icon="🌐", layout="wide")
+# --- 1. GENEL AYARLAR ---
+st.set_page_config(page_title="LinguaFlow AI", page_icon="🌐", layout="wide")
 
-# --- 2. CSS (MODERN & TEMİZ) ---
+# --- 2. CSS TASARIM (MOBİL UYUMLU & DEEPL TARZI) ---
 st.markdown("""
     <style>
     /* Arkaplan */
     .stApp { background-color: #F3F5F7; font-family: 'Segoe UI', sans-serif; }
     
     /* Başlık */
-    .header-logo { font-size: 2rem; font-weight: 800; color: #0F2B46; margin-bottom: 10px; }
-    .header-sub { color: #666; margin-bottom: 30px; font-size: 1rem; }
+    .header-logo { 
+        font-size: 1.8rem; font-weight: 800; color: #0F2B46; 
+        margin-bottom: 10px; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px;
+    }
     
-    /* Metin Kutuları */
+    /* Metin Alanları */
     .stTextArea textarea {
-        background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px;
-        font-size: 1.1rem; height: 250px !important; padding: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+        background-color: #ffffff; border: 1px solid #ccc; border-radius: 8px;
+        font-size: 1rem; height: 200px !important; padding: 10px;
     }
     .stTextArea textarea:focus { border-color: #4E89E8; box-shadow: 0 0 0 1px #4E89E8; }
     
     /* Sonuç Kutusu */
     .result-box {
-        background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px;
-        min-height: 250px; padding: 15px; font-size: 1.1rem; color: #0F2B46;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.02); white-space: pre-wrap;
+        background-color: #ffffff; border: 1px solid #ccc; border-radius: 8px;
+        min-height: 200px; padding: 15px; font-size: 1rem; color: #0F2B46;
+        white-space: pre-wrap; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
     
-    /* Konferans Modu Kutuları */
-    .conf-box-src { background-color: #e8eaf6; padding: 15px; border-radius: 8px; border-left: 4px solid #3f51b5; color: #333; }
-    .conf-box-trg { background-color: #e0f2f1; padding: 15px; border-radius: 8px; border-right: 4px solid #009688; color: #00695c; text-align: right; }
-
-    /* Butonlar */
+    /* Butonlar (Mobil Dostu) */
     div.stButton > button {
-        background-color: #0F2B46; color: white; border: none; border-radius: 6px;
+        background-color: #0F2B46; color: white; border: none; border-radius: 8px;
         padding: 12px; font-weight: 600; transition: 0.2s; width: 100%;
+        min-height: 50px; /* Mobilde parmakla basmak için */
     }
     div.stButton > button:hover { background-color: #264B75; }
     
-    /* Sekmeler */
-    .stTabs [data-baseweb="tab-list"] { gap: 20px; border-bottom: 1px solid #ddd; }
-    .stTabs [data-baseweb="tab"] { font-size: 1rem; font-weight: 600; color: #555; }
-    .stTabs [aria-selected="true"] { color: #0F2B46; border-bottom: 3px solid #0F2B46; }
+    /* Konferans Modu Kutuları */
+    .conf-row { display: flex; gap: 10px; margin-bottom: 10px; }
+    .conf-src { background: #e3f2fd; padding: 10px; border-radius: 8px; flex: 1; color: #0d47a1; font-size: 0.9rem; }
+    .conf-trg { background: #f3e5f5; padding: 10px; border-radius: 8px; flex: 1; color: #4a148c; font-size: 0.9rem; font-weight: bold; }
+
+    /* Geçmiş Listesi (Sidebar) */
+    .history-item {
+        padding: 8px; margin-bottom: 5px; background: white; border-radius: 5px;
+        font-size: 0.85rem; border-left: 3px solid #0F2B46; color: #555;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -59,25 +65,38 @@ except:
     st.error("Sistem Hatası: API Anahtarı bulunamadı.")
     st.stop()
 
-# --- 4. FONKSİYONLAR ---
+# --- 4. STATE VE HAFIZA ---
+if "history" not in st.session_state: st.session_state.history = []
+if "res_text" not in st.session_state: st.session_state.res_text = ""
+
+# --- 5. FONKSİYONLAR ---
 def ai_engine(text, task, target_lang="English", tone="Normal"):
     if not text: return ""
     
     if task == "translate":
         sys_msg = f"""
-        Sen profesyonel bir simultane tercümansın.
-        Hedef Dil: {target_lang}. Ton: {tone}.
-        GÖREV: Metni akıcı ve doğal bir şekilde çevir. Açıklama yapma.
+        Sen profesyonel bir tercümansın.
+        Hedef: {target_lang}. Ton: {tone}.
+        GÖREV: Metni çevir. Sadece çeviriyi ver.
         """
     elif task == "improve":
-        sys_msg = "Sen profesyonel bir editörsün. Metni gramer ve stil açısından düzelt. Dili değiştirme."
+        sys_msg = "Sen bir editörsün. Metni gramer ve stil açısından düzelt. Dili değiştirme."
     
     try:
         res = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": text[:15000]}]
+            messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": text[:10000]}]
         )
-        return res.choices[0].message.content
+        result = res.choices[0].message.content
+        
+        # Geçmişe Ekle (Sadece çeviri işlemlerini)
+        if task == "translate":
+            timestamp = datetime.datetime.now().strftime("%H:%M")
+            short_src = (text[:20] + '..') if len(text) > 20 else text
+            short_res = (result[:20] + '..') if len(result) > 20 else result
+            st.session_state.history.insert(0, f"[{timestamp}] {short_src} ➔ {short_res}")
+            
+        return result
     except Exception as e: return f"Hata: {e}"
 
 def create_audio(text, lang_name):
@@ -94,20 +113,37 @@ def local_read_file(file):
         if file.name.endswith('.pdf'):
             reader = PyPDF2.PdfReader(file)
             return "".join([page.extract_text() for page in reader.pages])
-        else: # Ses
+        else: 
             return client.audio.transcriptions.create(file=("a.wav", file), model="whisper-large-v3").text
     except: return None
 
 # ==========================================
-# ARAYÜZ
+# ARAYÜZ (UI)
 # ==========================================
 
-st.markdown('<div class="header-logo">LinguaFlow</div>', unsafe_allow_html=True)
+# --- KENAR ÇUBUĞU (GEÇMİŞ) ---
+with st.sidebar:
+    st.markdown("### 🕒 Geçmiş İşlemler")
+    if st.session_state.history:
+        for item in st.session_state.history[:10]: # Son 10 işlem
+            st.markdown(f"<div class='history-item'>{item}</div>", unsafe_allow_html=True)
+        
+        if st.button("🗑️ Geçmişi Temizle"):
+            st.session_state.history = []
+            st.rerun()
+    else:
+        st.info("Henüz çeviri yapılmadı.")
+    
+    st.divider()
+    st.caption("LinguaFlow AI v5.0")
 
-# --- SEKMELER (4 ANA MOD) ---
-tab_text, tab_conf, tab_files, tab_web = st.tabs(["📝 Metin & Yazım", "🎙️ Ortam Dinleme (Konferans)", "📂 Dosya & Belge", "🔗 Web Analiz"])
+# --- ANA EKRAN ---
+st.markdown('<div class="header-logo">LinguaFlow AI</div>', unsafe_allow_html=True)
 
-# --- 1. SEKME: METİN (DEEPL STİLİ) ---
+# Sekmeler
+tab_text, tab_conf, tab_files, tab_web = st.tabs(["📝 Metin", "🎙️ Ortam (Konferans)", "📂 Dosya", "🔗 Web"])
+
+# --- 1. SEKME: METİN ÇEVİRİ ---
 with tab_text:
     c1, c2, c3 = st.columns([3, 1, 3])
     with c1: st.markdown("**Kaynak (Otomatik)**")
@@ -115,121 +151,97 @@ with tab_text:
 
     col_in, col_out = st.columns(2)
     with col_in:
-        input_text = st.text_area("Giriş", height=250, placeholder="Metni buraya yapıştırın...", label_visibility="collapsed")
+        input_text = st.text_area("Giriş", height=200, placeholder="Yazın veya yapıştırın...", label_visibility="collapsed")
         
         b1, b2 = st.columns([1, 1])
         with b1:
-            if st.button("Çevir ➔"):
+            if st.button("Çevir ➔", type="primary"):
                 if input_text:
                     with st.spinner("Çevriliyor..."):
                         st.session_state.res_text = ai_engine(input_text, "translate", target_lang)
         with b2:
-            if st.button("✨ Düzelt (Write)"):
+            if st.button("✨ Düzelt"):
                 if input_text:
                     with st.spinner("Düzenleniyor..."):
                         st.session_state.res_text = ai_engine(input_text, "improve")
 
     with col_out:
-        res = st.session_state.get("res_text", "")
-        st.markdown(f"""<div class="result-box">{res if res else '<span style="color:#aaa;">Sonuç burada görünecek...</span>'}</div>""", unsafe_allow_html=True)
+        res = st.session_state.res_text
+        st.markdown(f"""<div class="result-box">{res if res else '<span style="color:#aaa;">...</span>'}</div>""", unsafe_allow_html=True)
+        
         if res:
-            st.divider()
-            ca, cc = st.columns([1, 3])
+            st.write("") # Boşluk
+            ca, cc = st.columns([1, 4])
             with ca:
                 aud = create_audio(res, target_lang)
                 if aud: st.audio(aud, format="audio/mp3")
-            with cc: st.code(res, language=None)
+            with cc:
+                st.code(res, language=None)
 
-# --- 2. SEKME: ORTAM DİNLEME (YENİ EKLENEN ÖZELLİK) ---
+# --- 2. SEKME: ORTAM DİNLEME ---
 with tab_conf:
-    st.info("💡 Bu modda mikrofon, ortamdaki konuşmaları sürekli dinler (Toplantı, Ders, TV).")
+    st.info("🎙️ Toplantı veya ortam dinleme modu. Konuşmalar bittiğinde çevirir.")
     
-    cc1, cc2 = st.columns([1, 3])
-    with cc1:
-        conf_target = st.selectbox("Çevrilecek Dil", ["Türkçe", "İngilizce", "Almanca", "Fransızca"], key="conf_lang")
-        st.write("")
-        # Yüksek bekleme süresi (30 sn sessizlik toleransı)
-        audio_conf = audio_recorder(text="🔴 DİNLEMEYİ BAŞLAT / BİTİR", icon_size="2x", recording_color="#d32f2f", pause_threshold=30.0)
+    c_conf1, c_conf2 = st.columns([1, 3])
+    with c_conf1:
+        conf_target = st.selectbox("Çeviri Dili", ["Türkçe", "İngilizce", "Almanca"], key="conf_t")
+        # Uzun süreli dinleme
+        audio_conf = audio_recorder(text="🔴 BAŞLAT / DURDUR", icon_size="2x", recording_color="#d32f2f", pause_threshold=20.0)
     
-    with cc2:
+    with c_conf2:
         if audio_conf:
-            with st.spinner("Ses analiz ediliyor ve çevriliyor..."):
-                # 1. Sesi Yazıya Dök
+            with st.spinner("Analiz ediliyor..."):
                 try:
+                    # 1. STT
                     conf_text = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(audio_conf)), model="whisper-large-v3").text
-                    
-                    # 2. Çevir
+                    # 2. Translate
                     conf_trans = ai_engine(conf_text, "translate", target_lang=conf_target)
                     
-                    # 3. Göster (Split View)
-                    row1, row2 = st.columns(2)
-                    with row1:
-                        st.markdown("**🗣️ Duyulan (Orijinal):**")
-                        st.markdown(f"<div class='conf-box-src'>{conf_text}</div>", unsafe_allow_html=True)
-                    with row2:
-                        st.markdown(f"**🤖 Çeviri ({conf_target}):**")
-                        st.markdown(f"<div class='conf-box-trg'>{conf_trans}</div>", unsafe_allow_html=True)
-                        
-                    # 4. İndirme Butonları
-                    st.divider()
-                    d1, d2 = st.columns(2)
-                    with d1: st.download_button("📥 Orijinal Metni İndir", conf_text, "toplanti_orijinal.txt")
-                    with d2: st.download_button("📥 Çeviriyi İndir", conf_trans, "toplanti_ceviri.txt")
+                    # 3. Gösterim
+                    st.markdown(f"""
+                    <div class="conf-row">
+                        <div class="conf-src">🗣️ {conf_text}</div>
+                        <div class="conf-trg">🤖 {conf_trans}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
                     
-                except Exception as e:
-                    st.error("Ses algılanamadı veya çok kısaydı.")
-        else:
-            st.markdown("""
-            <div style='text-align:center; padding:50px; color:#aaa; border: 2px dashed #ddd; border-radius:10px;'>
-                Mikrofon butonuna basın ve konuşmaya başlayın.<br>
-                Konuşma bitince butona tekrar basarak durdurun.
-            </div>
-            """, unsafe_allow_html=True)
+                    st.download_button("📥 İndir (TXT)", f"Kaynak: {conf_text}\nÇeviri: {conf_trans}", "toplanti.txt")
+                except: st.error("Ses alınamadı.")
 
 # --- 3. SEKME: DOSYA ---
 with tab_files:
-    st.write("📂 **PDF Belgesi** veya **Ses Dosyası (MP3)** yükleyin.")
-    u_file = st.file_uploader("Dosya Seç", type=['pdf', 'mp3', 'wav', 'm4a'])
-    
+    u_file = st.file_uploader("Dosya (PDF, MP3)", type=['pdf', 'mp3', 'wav', 'm4a'])
     if u_file:
         ftype = "Belge" if u_file.name.endswith('.pdf') else "Ses"
-        col_f1, col_f2 = st.columns(2)
         
-        with col_f1:
+        c_f1, c_f2 = st.columns(2)
+        with c_f1:
             st.info(f"Dosya: {u_file.name}")
-            if ftype == "Ses": st.audio(u_file)
-            f_target = st.selectbox("Hedef Dil", ["Türkçe", "İngilizce", "Almanca"], key="f_tgt")
+            f_target = st.selectbox("Dil", ["Türkçe", "İngilizce", "Almanca"], key="f_tgt")
             
-            if st.button("Analiz Et ve Çevir"):
+            if st.button("Analiz Et"):
                 with st.spinner("İşleniyor..."):
                     raw = local_read_file(u_file)
-                    if raw and len(raw) > 10:
-                        # Eğer çok uzunsa özetle, kısaysa çevir
-                        mode = "translate" if len(raw) < 2000 else "summarize" # Basit mantık
-                        st.session_state.f_res = ai_engine(raw, mode, f_target)
-                    else: st.error("Dosya boş veya okunamadı.")
+                    if raw:
+                        st.session_state.f_res = ai_engine(raw, "translate" if len(raw)<3000 else "summarize", f_target)
+                    else: st.error("Dosya okunamadı.")
 
-        with col_f2:
+        with c_f2:
             if "f_res" in st.session_state:
-                st.success("✅ Sonuç:")
+                st.success("Sonuç:")
                 st.markdown(f"<div class='result-box'>{st.session_state.f_res}</div>", unsafe_allow_html=True)
-                st.download_button("İndir", st.session_state.f_res, "dosya_sonuc.txt")
+                st.download_button("İndir", st.session_state.f_res, "dosya.txt")
 
 # --- 4. SEKME: WEB ---
 with tab_web:
-    w_url = st.text_input("Web Sitesi Linki (URL)")
-    if st.button("Siteyi Oku ve Özetle") and w_url:
-        with st.spinner("Site okunuyor..."):
+    w_url = st.text_input("Web Sitesi URL")
+    if st.button("Siteyi Oku") and w_url:
+        with st.spinner("Siteye bağlanılıyor..."):
             try:
                 h = {'User-Agent': 'Mozilla/5.0'}
-                page_content = requests.get(w_url, headers=h, timeout=10).content
-                soup = BeautifulSoup(page_content, 'html.parser')
-                raw_web = " ".join([p.get_text() for p in soup.find_all(['p', 'h1', 'h2'])])[:10000]
+                soup = BeautifulSoup(requests.get(w_url, headers=h, timeout=10).content, 'html.parser')
+                raw = " ".join([p.get_text() for p in soup.find_all(['p', 'h1', 'h2'])])[:10000]
                 
-                web_res = ai_engine(raw_web, "summarize", "Türkçe")
-                st.success("Site Özeti:")
-                st.markdown(f"<div class='result-box'>{web_res}</div>", unsafe_allow_html=True)
+                res = ai_engine(raw, "summarize", "Türkçe")
+                st.markdown(f"<div class='result-box'>{res}</div>", unsafe_allow_html=True)
             except: st.error("Site okunamadı.")
-
-st.divider()
-st.caption("LinguaFlow AI © 2024")
