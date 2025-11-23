@@ -47,6 +47,7 @@ except:
 def get_translation(text, target_lang, tone, style_prompt=""):
     system_prompt = f"Sen tercümansın. Hedef: {target_lang}. Ton: {tone}. {style_prompt}. Sadece çeviriyi ver."
     try:
+        # Metin Modeli (En kararlısı)
         res = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": text}]
@@ -59,7 +60,7 @@ def get_analysis(text, target_lang):
     res = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}])
     return res.choices[0].message.content
 
-# GÖRSEL ANALİZ (GÜNCELLENEN KISIM: MODEL İSMİ DEĞİŞTİ)
+# GÖRSEL ANALİZ (GÜNCELLENEN MODEL)
 def analyze_image(image_bytes, target_lang):
     base64_image = base64.b64encode(image_bytes).decode('utf-8')
     prompt = f"""
@@ -70,7 +71,7 @@ def analyze_image(image_bytes, target_lang):
     """
     try:
         res = client.chat.completions.create(
-            model="llama-3.2-90b-vision-preview", # <-- GÜNCELLENEN MODEL (Daha güçlü)
+            model="llama-3.2-11b-vision-instruct", # <-- GÜNCEL VE KARARLI GÖRSEL MODELİ
             messages=[
                 {
                     "role": "user",
@@ -85,7 +86,15 @@ def analyze_image(image_bytes, target_lang):
         )
         return res.choices[0].message.content
     except Exception as e:
-        return f"Görsel analiz hatası: {str(e)}"
+        # Eğer 11b de hata verirse 90b-instruct deneyelim (Yedek plan)
+        try:
+            res = client.chat.completions.create(
+                model="llama-3.2-90b-vision-instruct",
+                messages=[{"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}]}]
+            )
+            return res.choices[0].message.content
+        except Exception as e2:
+             return f"Görsel analiz hatası: {str(e2)}"
 
 def create_voice(text, lang_code):
     try:
