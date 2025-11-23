@@ -7,62 +7,74 @@ import requests
 from bs4 import BeautifulSoup
 import PyPDF2
 import datetime
-import urllib.parse # Link oluşturmak için gerekli
+import urllib.parse
 
-# --- 1. GENEL AYARLAR ---
+# --- 1. GENEL AYARLAR (UYGULAMA KİMLİĞİ) ---
 st.set_page_config(
-    page_title="LinguaFlow Ultimate",
+    page_title="LinguaFlow AI",
     page_icon="🧠",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': 'https://www.google.com',
+        'Report a bug': "https://www.google.com",
+        'About': "LinguaFlow AI v9.0 - Yapay Zeka Destekli Çeviri Merkezi"
+    }
 )
 
-# --- 2. CSS TASARIM (PREMIUM & PAYLAŞIM BUTONLARI) ---
+# --- 2. CSS TASARIM (PROFESYONEL ARAYÜZ) ---
 st.markdown("""
     <style>
     /* Genel */
-    .stApp { background-color: #f9fafb; font-family: 'Inter', sans-serif; }
+    .stApp { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
     
-    /* Başlık */
+    /* Başlık Stili */
     .header-logo { 
-        font-size: 2rem; font-weight: 800; color: #1e3a8a; 
+        font-size: 2.2rem; font-weight: 800; color: #1e293b; 
         margin-bottom: 5px; letter-spacing: -0.5px;
     }
+    .header-sub { color: #64748b; margin-bottom: 25px; font-size: 1rem; }
     
-    /* Metin Alanı */
+    /* Metin Alanları */
     .stTextArea textarea {
         border: 1px solid #e2e8f0; border-radius: 12px;
         font-size: 1.1rem; height: 280px !important; padding: 15px;
-        background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        background: white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
         resize: none;
     }
-    .stTextArea textarea:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+    .stTextArea textarea:focus { border-color: #3b82f6; ring: 2px solid #3b82f6; }
     
     /* Sonuç Kutusu */
     .result-box {
         background-color: white; border: 1px solid #e2e8f0; border-radius: 12px;
-        min-height: 280px; padding: 20px; font-size: 1.1rem; color: #1e293b;
-        white-space: pre-wrap; box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        min-height: 280px; padding: 20px; font-size: 1.1rem; color: #334155;
+        white-space: pre-wrap; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
     }
     
-    /* İşlem Butonları */
+    /* Ana Butonlar */
     div.stButton > button {
-        background-color: #1e3a8a; color: white; border: none; border-radius: 8px;
+        background: linear-gradient(to right, #2563eb, #1d4ed8);
+        color: white; border: none; border-radius: 8px;
         padding: 12px; font-weight: 600; width: 100%; transition: all 0.2s;
+        box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
     }
-    div.stButton > button:hover { background-color: #1e40af; transform: translateY(-1px); }
+    div.stButton > button:hover { 
+        background: linear-gradient(to right, #1d4ed8, #1e40af);
+        transform: translateY(-1px); 
+        box-shadow: 0 6px 8px -1px rgba(37, 99, 235, 0.3);
+    }
     
-    /* PAYLAŞIM BUTONLARI (ÖZEL TASARIM) */
+    /* Paylaşım Butonları */
     .share-btn-container {
-        display: flex; gap: 10px; margin-top: 10px;
+        display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;
     }
     .share-link {
-        text-decoration: none; padding: 8px 16px; border-radius: 6px;
-        font-size: 0.9rem; font-weight: bold; color: white !important;
+        text-decoration: none; padding: 8px 12px; border-radius: 6px;
+        font-size: 0.85rem; font-weight: 600; color: white !important;
         display: inline-flex; align-items: center; gap: 5px;
-        transition: opacity 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: opacity 0.2s;
     }
-    .share-link:hover { opacity: 0.9; }
+    .share-link:hover { opacity: 0.9; text-decoration: none; }
     .whatsapp { background-color: #25D366; }
     .sms { background-color: #3b82f6; }
     .email { background-color: #64748b; }
@@ -71,16 +83,16 @@ st.markdown("""
     .history-item {
         padding: 10px; margin-bottom: 8px; background: white; border-radius: 8px;
         font-size: 0.85rem; border-left: 4px solid #3b82f6; color: #475569;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        border: 1px solid #f1f5f9;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. API BAĞLANTISI ---
+# --- 3. API KONTROLÜ ---
 try:
     client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 except:
-    st.error("⚠️ API Key Hatası! Secrets ayarlarını kontrol edin.")
+    st.error("⚠️ API Anahtarı Bulunamadı! Secrets ayarlarını kontrol edin.")
     st.stop()
 
 # --- 4. STATE YÖNETİMİ ---
@@ -88,21 +100,16 @@ if "history" not in st.session_state: st.session_state.history = []
 if "res_text" not in st.session_state: st.session_state.res_text = ""
 if "input_val" not in st.session_state: st.session_state.input_val = ""
 
-# --- 5. FONKSİYONLAR ---
+# --- 5. FONKSİYONLAR (MOTOR) ---
 def ai_engine(text, task, target_lang="English", tone="Normal"):
     if not text: return ""
     
     if task == "translate":
-        sys_msg = f"""
-        Sen uzman bir tercümansın.
-        Hedef Dil: {target_lang}. Ton: {tone}.
-        GÖREV: Metni en doğal ve akıcı şekilde çevir.
-        KURAL: Asla açıklama ekleme, sadece çeviriyi ver.
-        """
+        sys_msg = f"Sen uzman tercümansın. Hedef: {target_lang}. Ton: {tone}. GÖREV: Doğal ve akıcı çevir. Açıklama yapma."
     elif task == "improve":
-        sys_msg = "Sen kıdemli bir editörsün. Metni gramer, akıcılık ve stil açısından mükemmelleştir. Dili değiştirme."
+        sys_msg = "Sen profesyonel editörsün. Metni gramer ve akıcılık yönünden düzelt. Dili koru."
     elif task == "summarize":
-        sys_msg = f"Sen bir analistsin. Metni {target_lang} dilinde özetle. Önemli noktaları madde madde yaz."
+        sys_msg = f"Sen analistsin. Metni {target_lang} dilinde özetle. Önemli maddeleri çıkar."
 
     try:
         res = client.chat.completions.create(
@@ -111,17 +118,12 @@ def ai_engine(text, task, target_lang="English", tone="Normal"):
         )
         result = res.choices[0].message.content
         
-        # Geçmişe Kayıt
-        timestamp = datetime.datetime.now().strftime("%d/%m %H:%M")
-        short_src = (text[:30] + '..') if len(text) > 30 else text
-        icon = "🌍" if task == "translate" else ("✨" if task == "improve" else "📝")
-        
-        st.session_state.history.insert(0, {
-            "time": timestamp,
-            "src": short_src,
-            "res": result,
-            "type": icon
-        })
+        # Geçmişe Ekle
+        if task == "translate":
+            timestamp = datetime.datetime.now().strftime("%H:%M")
+            short_src = (text[:30] + '..') if len(text) > 30 else text
+            icon = "🌍" if task == "translate" else "✨"
+            st.session_state.history.insert(0, {"time": timestamp, "src": short_src, "type": icon})
             
         return result
     except Exception as e: return f"Hata: {e}"
@@ -140,76 +142,75 @@ def local_read_file(file):
         if file.name.endswith('.pdf'):
             reader = PyPDF2.PdfReader(file)
             return "".join([page.extract_text() for page in reader.pages])
-        else: 
+        else:
             return client.audio.transcriptions.create(file=("a.wav", file), model="whisper-large-v3").text
     except: return None
 
-# --- YENİ: PAYLAŞIM FONKSİYONU ---
 def render_share_buttons(text):
-    """Metni paylaşmak için HTML butonları oluşturur"""
     if not text: return
-    
-    # Metni URL formatına çevir (Özel karakterleri düzeltir)
     encoded_text = urllib.parse.quote(text)
-    
-    # Linkler
     whatsapp_url = f"https://api.whatsapp.com/send?text={encoded_text}"
-    # SMS: mobilde çalışır, web'de bazen tepki vermez ama standarttır
-    sms_url = f"sms:?body={encoded_text}" 
-    email_url = f"mailto:?subject=LinguaFlow%20Cevirisi&body={encoded_text}"
+    sms_url = f"sms:?body={encoded_text}"
+    email_url = f"mailto:?subject=LinguaFlow&body={encoded_text}"
     
-    # HTML Butonlar
     st.markdown(f"""
     <div class="share-btn-container">
-        <a href="{whatsapp_url}" target="_blank" class="share-link whatsapp">
-            📱 WhatsApp
-        </a>
-        <a href="{sms_url}" class="share-link sms">
-            💬 SMS/Mesaj
-        </a>
-        <a href="{email_url}" class="share-link email">
-            📧 E-Posta
-        </a>
+        <a href="{whatsapp_url}" target="_blank" class="share-link whatsapp">📱 WhatsApp</a>
+        <a href="{sms_url}" class="share-link sms">💬 SMS</a>
+        <a href="{email_url}" class="share-link email">📧 Email</a>
     </div>
     """, unsafe_allow_html=True)
 
 # ==========================================
-# ARAYÜZ
+# ARAYÜZ (UI)
 # ==========================================
 
-# --- YAN MENÜ (AKILLI GEÇMİŞ) ---
+# --- YAN MENÜ ---
 with st.sidebar:
-    st.markdown("### 🕒 İşlem Geçmişi")
+    st.title("LinguaFlow")
+    st.caption("v9.0 Final")
+    st.markdown("---")
     
+    st.markdown("### 🕒 Son İşlemler")
     if st.session_state.history:
-        for item in st.session_state.history[:8]:
+        for item in st.session_state.history[:6]:
             st.markdown(f"""
             <div class="history-item">
-                <div style="font-size:0.7rem; color:#999">{item['time']}</div>
+                <div style="font-size:0.7rem; color:#94a3b8">{item['time']}</div>
                 {item['type']} {item['src']}
             </div>
             """, unsafe_allow_html=True)
-        
-        if st.button("🗑️ Temizle"):
+        if st.button("Temizle", type="secondary"):
             st.session_state.history = []
             st.rerun()
     else:
-        st.caption("Henüz bir işlem yapılmadı.")
+        st.info("Geçmiş boş.")
+    
+    st.markdown("---")
+    with st.expander("ℹ️ Hakkında & Yardım"):
+        st.markdown("""
+        **LinguaFlow AI Nedir?**
+        Yapay zeka destekli, çok modlu bir çeviri ve analiz asistanıdır.
+        
+        **Modlar:**
+        - **📝 Metin:** Yazılı çeviri ve gramer düzeltme.
+        - **🎙️ Ortam:** Toplantı ve konuşma dinleme.
+        - **📂 Dosya:** PDF ve Ses dosyası analizi.
+        - **🔗 Web:** Haber ve makale özeti.
+        """)
 
 # --- ÜST BAŞLIK ---
-st.markdown('<div class="header-logo">LinguaFlow Ultimate</div>', unsafe_allow_html=True)
+st.markdown('<div class="header-logo">LinguaFlow AI</div>', unsafe_allow_html=True)
 
 # --- SEKMELER ---
 tab_text, tab_conf, tab_files, tab_web = st.tabs(["📝 Metin & Yazım", "🎙️ Ortam & Toplantı", "📂 Dosya & Belge", "🔗 Web Analiz"])
+LANG_OPTIONS = ["English", "Türkçe", "Deutsch", "Français", "Español", "Italiano", "Русский", "العربية", "中文"]
 
-# --- GLOBAL DİL LİSTESİ ---
-LANG_OPTIONS = ["English", "Türkçe", "Deutsch", "Français", "Español", "Italiano", "Português", "Polski", "Русский", "العربية", "中文", "日本語"]
-
-# --- 1. METİN SEKMESİ ---
+# --- 1. METİN ---
 with tab_text:
     c1, c2, c3 = st.columns([3, 1, 3])
-    with c1: st.markdown("**Giriş (Otomatik Algılanır)**")
-    with c3: target_lang = st.selectbox("Hedef Dil", LANG_OPTIONS, label_visibility="collapsed")
+    with c1: st.markdown("**Giriş (Otomatik)**")
+    with c3: target_lang = st.selectbox("Hedef", LANG_OPTIONS, label_visibility="collapsed")
 
     col_in, col_out = st.columns(2)
     with col_in:
@@ -227,111 +228,79 @@ with tab_text:
                 if input_text:
                     with st.spinner("İyileştiriliyor..."):
                         st.session_state.res_text = ai_engine(input_text, "improve")
-        with b3:
-            tone = st.selectbox("Ton", ["Normal", "Resmi", "Samimi"], label_visibility="collapsed")
+        with b3: tone = st.selectbox("Ton", ["Normal", "Resmi", "Samimi"], label_visibility="collapsed")
         with b4:
-            if st.button("🗑️"): 
-                st.session_state.input_val = ""
-                st.session_state.res_text = ""
-                st.rerun()
+            if st.button("🗑️"): st.session_state.input_val = ""; st.session_state.res_text = ""; st.rerun()
 
     with col_out:
         res = st.session_state.res_text
-        st.markdown(f"""<div class="result-box">{res if res else '<span style="color:#aaa;">Sonuç burada görünecek...</span>'}</div>""", unsafe_allow_html=True)
-        
+        st.markdown(f"""<div class="result-box">{res if res else '<span style="color:#aaa;">...</span>'}</div>""", unsafe_allow_html=True)
         if res:
-            # Alt Araç Çubuğu (Ses - Kopyala - Paylaş)
             st.write("")
             ca, cb = st.columns([1, 3])
             with ca:
                 aud = create_audio(res, target_lang)
                 if aud: st.audio(aud, format="audio/mp3")
             with cb:
-                # PAYLAŞIM VE KOPYALAMA ALANI
-                st.caption("Paylaş:")
-                render_share_buttons(res) # <-- YENİ EKLENEN PAYLAŞIM FONKSİYONU
-                st.write("")
-                with st.expander("Kopyalamak için tıkla"):
-                    st.code(res, language=None)
+                render_share_buttons(res)
+                with st.expander("Kopyala"): st.code(res, language=None)
 
-# --- 2. KONFERANS SEKMESİ ---
+# --- 2. KONFERANS ---
 with tab_conf:
     st.info("🎙️ **Canlı Dinleme:** Toplantı veya ortam konuşmalarını dinler, bitince çevirir.")
-    
-    c_conf1, c_conf2 = st.columns([1, 3])
-    with c_conf1:
+    c1, c2 = st.columns([1, 3])
+    with c1:
         conf_target = st.selectbox("Çeviri Dili", LANG_OPTIONS, key="conf_t")
         st.write("")
-        audio_conf = audio_recorder(text="🔴 BAŞLAT / BİTİR", icon_size="2x", recording_color="#d32f2f", pause_threshold=20.0)
-    
-    with c_conf2:
+        audio_conf = audio_recorder(text="🔴 BAŞLAT / DURDUR", icon_size="2x", recording_color="#dc2626", pause_threshold=20.0)
+    with c2:
         if audio_conf:
             with st.spinner("Analiz ediliyor..."):
                 try:
-                    conf_text = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(audio_conf)), model="whisper-large-v3").text
-                    conf_trans = ai_engine(conf_text, "translate", target_lang=conf_target)
-                    
-                    st.success(f"🗣️ {conf_text}")
-                    st.info(f"🤖 {conf_trans}")
-                    
-                    # Paylaşım Butonları
-                    render_share_buttons(f"Konuşma: {conf_text}\n\nÇeviri: {conf_trans}")
-                    
-                    t_stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-                    st.download_button("📥 Raporu İndir", f"Kaynak: {conf_text}\n\nÇeviri: {conf_trans}", f"Toplanti_{t_stamp}.txt")
+                    txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(audio_conf)), model="whisper-large-v3").text
+                    trans = ai_engine(txt, "translate", target_lang=conf_target)
+                    st.success(f"🗣️: {txt}")
+                    st.info(f"🤖: {trans}")
+                    render_share_buttons(f"{txt}\n\n{trans}")
+                    st.download_button("📥 İndir", f"{txt}\n{trans}", "toplanti.txt")
                 except: st.error("Ses anlaşılamadı.")
 
-# --- 3. DOSYA SEKMESİ ---
+# --- 3. DOSYA ---
 with tab_files:
-    st.write("📂 **PDF** veya **Ses Dosyası** yükleyin.")
+    st.write("📂 **PDF** veya **Ses** yükleyin.")
     u_file = st.file_uploader("", type=['pdf', 'mp3', 'wav', 'm4a'], label_visibility="collapsed")
-    
     if u_file:
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
+        col1, col2 = st.columns(2)
+        with col1:
             st.info(f"Dosya: {u_file.name}")
-            f_target = st.selectbox("Hedef Dil", LANG_OPTIONS, key="f_tgt")
-            
-            if st.button("Analiz Et ve Çevir"):
+            f_target = st.selectbox("Dil", LANG_OPTIONS, key="f_tgt")
+            if st.button("Analiz Et"):
                 with st.spinner("İşleniyor..."):
                     raw = local_read_file(u_file)
-                    if raw and len(raw) > 10:
+                    if raw and len(raw)>10:
                         mode = "translate" if len(raw) < 3000 else "summarize"
                         st.session_state.f_res = ai_engine(raw, mode, f_target)
-                    else: st.error("Dosya okunamadı.")
-
-        with col_f2:
+                    else: st.error("Hata.")
+        with col2:
             if "f_res" in st.session_state:
-                st.success("Sonuç:")
                 st.markdown(f"<div class='result-box'>{st.session_state.f_res}</div>", unsafe_allow_html=True)
-                
-                # Paylaş
                 render_share_buttons(st.session_state.f_res)
-                
-                t_stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-                st.download_button("📥 İndir", st.session_state.f_res, f"Dosya_Analiz_{t_stamp}.txt")
+                st.download_button("📥 İndir", st.session_state.f_res, "dosya.txt")
 
-# --- 4. WEB SEKMESİ ---
+# --- 4. WEB ---
 with tab_web:
-    w_url = st.text_input("Web Sitesi Adresi (URL)")
+    url = st.text_input("Web URL")
     w_target = st.selectbox("Rapor Dili", LANG_OPTIONS, key="w_tgt")
-    
-    if st.button("Siteyi Oku ve Özetle") and w_url:
-        with st.spinner("Site okunuyor..."):
+    if st.button("Analiz Et") and url:
+        with st.spinner("Okunuyor..."):
             try:
                 h = {'User-Agent': 'Mozilla/5.0'}
-                soup = BeautifulSoup(requests.get(w_url, headers=h, timeout=10).content, 'html.parser')
-                raw = " ".join([p.get_text() for p in soup.find_all(['p', 'h1', 'h2'])])[:10000]
-                
-                web_res = ai_engine(raw, "summarize", w_target)
-                st.success("Site Özeti:")
-                st.markdown(f"<div class='result-box'>{web_res}</div>", unsafe_allow_html=True)
-                
-                # Paylaş
-                render_share_buttons(f"Site Özeti ({w_url}):\n\n{web_res}")
-                
-                t_stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-                st.download_button("📥 İndir", web_res, f"Web_Ozet_{t_stamp}.txt")
+                soup = BeautifulSoup(requests.get(url, headers=h, timeout=10).content, 'html.parser')
+                raw = " ".join([p.get_text() for p in soup.find_all(['p', 'h1'])])[:10000]
+                res = ai_engine(raw, "summarize", w_target)
+                st.markdown(f"<div class='result-box'>{res}</div>", unsafe_allow_html=True)
+                render_share_buttons(f"Link: {url}\n\n{res}")
+                st.download_button("📥 İndir", res, "web_ozet.txt")
             except: st.error("Siteye erişilemedi.")
 
 st.divider()
