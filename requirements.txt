@@ -2,3 +2,5 @@ streamlit
 groq
 audio-recorder-streamlit
 gTTS
+beautifulsoup4
+requests
