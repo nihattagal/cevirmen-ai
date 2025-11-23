@@ -12,11 +12,9 @@ st.set_page_config(
     layout="centered"
 )
 
-# --- 🎨 ÖZEL TASARIM (CSS) ---
-# Burası uygulamanın "Makyaj" kısmıdır.
+# --- TASARIM (CSS) ---
 st.markdown("""
     <style>
-    /* Ana Başlık */
     .main-title {
         text-align: center;
         background: -webkit-linear-gradient(45deg, #6a11cb, #2575fc);
@@ -26,28 +24,13 @@ st.markdown("""
         font-weight: bold;
         padding-bottom: 20px;
     }
-    
-    /* Mesaj Kutuları */
     .chat-box {
-        padding: 15px;
-        border-radius: 15px;
-        margin-bottom: 10px;
+        padding: 15px; border-radius: 15px; margin-bottom: 10px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
-    .user-msg {
-        background-color: #f0f2f6;
-        border-left: 5px solid #2575fc;
-    }
-    .ai-msg {
-        background-color: #e8f4f8;
-        border-left: 5px solid #00c853;
-    }
-    
-    /* Butonlar */
-    .stButton>button {
-        border-radius: 20px;
-        font-weight: bold;
-    }
+    .user-msg { background-color: #f0f2f6; border-left: 5px solid #2575fc; }
+    .ai-msg { background-color: #e8f4f8; border-left: 5px solid #00c853; }
+    .stButton>button { border-radius: 20px; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -71,10 +54,8 @@ if "chat_history" not in st.session_state:
 with st.sidebar:
     st.header("🎛️ Kontrol Merkezi")
     
-    # 1. Mod
+    # Mod ve Dil
     work_mode = st.radio("Çalışma Modu:", ("⚡ Sohbet", "🔴 Konferans"), horizontal=True)
-    
-    # 2. Dil
     target_lang_name = st.selectbox("Hedef Dil:", ("Türkçe", "İngilizce", "Almanca", "İspanyolca", "Fransızca", "Rusça", "Arapça", "Japonca", "Çince"))
     
     lang_codes = {
@@ -86,20 +67,20 @@ with st.sidebar:
     
     st.divider()
 
-    # 3. YENİ: ÖZEL KARAKTER (PERSONA)
+    # --- GELİŞMİŞ KARAKTER SEÇİMİ ---
     st.subheader("🎭 AI Kişiliği")
     persona_choice = st.selectbox(
-        "Tercüman nasıl davransın?",
-        ("Standart Profesyonel", "Samimi Arkadaş", "Basit Anlatım (Çocuklar için)", "👔 Resmi/Hukuki", "✨ ÖZEL TARZ YARAT")
+        "Tercüman Rolü:",
+        ("Standart Profesyonel", "Samimi Kanka", "Masal Anlatıcısı (Çocuklar için)", "Mafya Babası", "Orta Çağ Şövalyesi", "✨ ÖZEL TARZ YARAT")
     )
     
     custom_system_instruction = ""
     if persona_choice == "✨ ÖZEL TARZ YARAT":
-        custom_system_instruction = st.text_area("Yapay zekaya emrini yaz:", placeholder="Örn: Sen kaba bir korsansın, her cümlene 'Ahoy!' diye başla.")
+        custom_system_instruction = st.text_area("Rol tanımı yaz:", placeholder="Örn: Sen Yoda'sın. Cümleleri devrik kur.")
     
     st.divider()
     
-    # 4. Hız ve Asistan
+    # Ekstra Araçlar
     tts_slow = st.checkbox("🐢 Yavaş Okuma", value=False)
     
     if st.button("📝 Toplantı Özeti", type="secondary", use_container_width=True):
@@ -109,11 +90,7 @@ with st.sidebar:
                 for chat in st.session_state.chat_history:
                     full_text += f"- {chat['user']} (Mod: {chat.get('mood', 'Nötr')})\n"
                 
-                summary_prompt = f"""
-                Sen profesyonel bir asistansın. Metni analiz et. Hedef Dil: {target_lang_name}.
-                ÇIKTI: 1.Özet, 2.Kararlar, 3.Görevler.
-                Metin: {full_text}
-                """
+                summary_prompt = f"Sen bir asistansın. Metni analiz et. Hedef: {target_lang_name}. Çıktı: Özet, Kararlar, Görevler.\nMetin: {full_text}"
                 summary_res = client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=[{"role": "user", "content": summary_prompt}]
@@ -127,18 +104,16 @@ with st.sidebar:
         if "summary_result" in st.session_state: del st.session_state.summary_result
         st.rerun()
 
-# --- ÖZET GÖSTERİMİ ---
+# --- ÖZET ---
 if "summary_result" in st.session_state:
     st.success("📝 Rapor Hazır")
     st.info(st.session_state.summary_result)
-    if st.button("Kapat"):
-        del st.session_state.summary_result
-        st.rerun()
+    if st.button("Kapat"): del st.session_state.summary_result; st.rerun()
 
 # --- ANA EKRAN ---
 tab1, tab2 = st.tabs(["🎙️ Canlı Mikrofon", "📂 Dosya Yükle"])
 
-# --- MOTOR ---
+# --- İŞLEME MOTORU ---
 def process_audio(audio_file_input, source_name="Mikrofon"):
     with st.spinner(f'{source_name} işleniyor...'):
         try:
@@ -149,25 +124,36 @@ def process_audio(audio_file_input, source_name="Mikrofon"):
                 response_format="text"
             )
             
-            # 2. Karakteri Belirle
+            # 2. Karakter Ayarları (Prompt Mühendisliği)
             if persona_choice == "✨ ÖZEL TARZ YARAT":
-                persona_prompt = f"Senin karakterin: {custom_system_instruction}. Buna sadık kalarak çeviri yap."
-            elif persona_choice == "Samimi Arkadaş":
-                persona_prompt = "Sen çok samimi, 'kanka' gibi konuşan birisin. Argo kullanabilirsin."
-            elif persona_choice == "Basit Anlatım (Çocuklar için)":
-                persona_prompt = "Sen bir ilkokul öğretmenisin. Her şeyi 5 yaşındaki çocuğun anlayacağı kadar basitleştirerek çevir."
-            elif persona_choice == "👔 Resmi/Hukuki":
-                persona_prompt = "Sen bir hukuk ve diplomasi uzmanısın. Çok resmi, üst düzey bir dil kullan."
+                persona_prompt = f"ROLÜN: {custom_system_instruction}. Çeviriyi tam olarak bu role bürünerek yap."
+            elif persona_choice == "Samimi Kanka":
+                persona_prompt = "ROLÜN: Çok samimi, sokak ağzıyla konuşan, 'kanka', 'bro' gibi kelimeler kullanan birisin."
+            elif persona_choice == "Masal Anlatıcısı (Çocuklar için)":
+                persona_prompt = "ROLÜN: Bir masalcı teyzesin. Çok tatlı, basit ve sevimli bir dille, çocuklara anlatır gibi çevir."
+            elif persona_choice == "Mafya Babası":
+                persona_prompt = "ROLÜN: Ağır bir mafya babasısın (Godfather). Racon keserek, ağır ve tehditkar konuş."
+            elif persona_choice == "Orta Çağ Şövalyesi":
+                persona_prompt = "ROLÜN: Orta çağdan gelen asil bir şövalyesin. Eski Türkçe (veya İngilizce) kullan. 'Azizim', 'Zat-ı aliniz', 'Hürmetler' gibi ifadelerle çok süslü konuş."
             else:
-                persona_prompt = "Sen profesyonel bir tercümansın. Sadece net çeviri yap."
+                persona_prompt = "ROLÜN: Profesyonel tercüman. Net ve doğru çevir."
 
-            # 3. Çevir + Analiz
+            # 3. Çeviri + Analiz (GÜÇLENDİRİLMİŞ PROMPT)
             system_prompt = f"""
-            {persona_prompt}
+            Sen hem bir tercüman hem de ödüllü bir oyuncusun.
             Hedef Dil: {target_lang_name}.
-            GÖREV:
-            1. Duyguyu tek kelimeyle bul (Kızgın, Mutlu, Ciddi, Nötr).
-            2. Çeviriyi yap.
+            
+            {persona_prompt}
+            
+            GÖREVİN:
+            1. Metindeki duyguyu analiz et.
+            2. Metni hedef dile çevir AMA çeviriyi ROLÜNE UYGUN ŞEKİLDE YENİDEN YAZ.
+            
+            ÖNEMLİ:
+            - Sadece kelime çevirme, karakterin ruhunu kat!
+            - Eğer şövalyeysen "Nasılsın?" deme, "Sıhhatiniz yerinde midir ey yolcu?" de.
+            - Eğer mafyaysan "Para nerede?" deme, "Mangırları sökül bakalım" de.
+            
             FORMAT: DUYGU ||| METİN
             """
             
@@ -201,20 +187,17 @@ def process_audio(audio_file_input, source_name="Mikrofon"):
                 "mood": mood,
                 "audio": audio_data
             })
+            # st.rerun() # Döngü sorununa karşı kapalı
             
         except Exception as e:
             st.error(f"Hata: {str(e)}")
 
-# --- SEKME 1: MİKROFON ---
+# --- SEKME 1 ---
 with tab1:
     if work_mode == "⚡ Sohbet":
-        icon_color = "#e8b62c" 
-        pause_limit = 2.0 
-        st.info("⚡ Bas-Konuş Modu")
+        icon_color = "#e8b62c"; pause_limit = 2.0; st.info("Bas-Konuş")
     else:
-        icon_color = "#FF0000" 
-        pause_limit = 300.0 
-        st.warning("🔴 Konferans Modu (Sürekli)")
+        icon_color = "#FF0000"; pause_limit = 300.0; st.warning("Sürekli Dinleme")
 
     col1, col2, col3 = st.columns([1, 10, 1])
     with col2:
@@ -228,14 +211,13 @@ with tab1:
         else:
             st.warning("⚠️ Ses çok kısa.")
 
-# --- SEKME 2: DOSYA ---
+# --- SEKME 2 ---
 with tab2:
-    st.write("📁 **Ses dosyası yükleyin**")
-    uploaded_file = st.file_uploader("Dosya Seç", type=['wav', 'mp3', 'm4a', 'ogg'])
+    uploaded_file = st.file_uploader("Dosya Yükle", type=['wav', 'mp3', 'm4a', 'ogg'])
     if uploaded_file and st.button("🚀 Çevir"):
         process_audio(uploaded_file, "Dosya")
 
-# --- SOHBET GEÇMİŞİ (YENİ TASARIM) ---
+# --- GEÇMİŞ ---
 st.divider()
 mood_icons = {"Kızgın": "😡", "Mutlu": "😊", "Üzgün": "😢", "Ciddi": "😐", "Nötr": "😶"}
 
@@ -245,16 +227,13 @@ for chat in reversed(st.session_state.chat_history):
     for key, val in mood_icons.items():
         if key in current_mood: icon = val; break
     
-    # Özel Tasarımlı Kutular
     st.markdown(f"""
     <div class="chat-box user-msg">
-        <small style="color:#555">🗣️ Kaynak:</small><br>
-        {chat['user']}
+        <small style="color:#555">🗣️ Kaynak:</small><br>{chat['user']}
     </div>
     <div class="chat-box ai-msg">
         <small style="color:#555">🤖 Çeviri ({icon} {current_mood}):</small><br>
         <b style="font-size:1.1em">{chat['ai']}</b>
     </div>
     """, unsafe_allow_html=True)
-    
     st.audio(chat['audio'], format="audio/mp3")
