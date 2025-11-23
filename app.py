@@ -13,9 +13,7 @@ st.set_page_config(
 )
 
 # --- BAŞLIK ---
-st.markdown("""
-    <h1 style='text-align: center; color: #4B0082;'>🧠 Empatik AI Tercüman</h1>
-""", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: #4B0082;'>🧠 Empatik AI Tercüman</h1>", unsafe_allow_html=True)
 
 # --- GÜVENLİK ---
 try:
@@ -108,7 +106,7 @@ if audio_bytes:
                 response_format="text"
             )
             
-            # C. Çevir + Analiz Et (GELİŞMİŞ PROMPT)
+            # C. Çevir + Analiz Et
             system_prompt = f"""
             Sen uzman bir tercüman ve psikologsun.
             Hedef Dil: {target_lang_name}.
@@ -118,11 +116,11 @@ if audio_bytes:
             2. Metni hedef dile çevir.
             
             KURALLAR:
-            - Eğer kullanıcı "Alo", "Test", "Ses kontrol" diyorsa veya sadece teknik konuşuyorsa DUYGU yerine "Nötr" yaz.
-            - Asla duygu uydurma. Emin değilsen "Nötr" yaz.
-            - Duygular şunlar olabilir: Kızgın, Mutlu, Ciddi, Heyecanlı, Üzgün, Nötr, Şaşkın.
+            - Eğer kullanıcı "Alo", "Ses", "Test" diyorsa DUYGU yerine "Nötr" yaz.
+            - Emin değilsen "Nötr" yaz.
+            - Duygular: Kızgın, Mutlu, Ciddi, Heyecanlı, Üzgün, Nötr, Şaşkın.
             
-            CEVAP FORMATI (Buna uy):
+            CEVAP FORMATI:
             DUYGU_DURUMU ||| ÇEVRİLMİŞ_METİN
             """
 
@@ -177,16 +175,16 @@ for chat in reversed(st.session_state.chat_history):
     with st.container():
         current_mood = chat.get('mood', 'Nötr')
         
+        # İkon Bulma
         icon = "😶"
         for key, val in mood_icons.items():
             if key in current_mood:
                 icon = val
                 break
         
-        # 1. Satır
-        st.markdown(f"""
-        <div style="margin-bottom: 5px;">
-            <span style="color: gray; font-size: 12px;">Duyulan:</span><br>
-            <i>"{chat['user']}"</i>
-        </div>
-        """, unsaf
+        # GÜVENLİ GÖRÜNÜM KODU (Hata çıkaran kısım düzeltildi)
+        st.markdown(f"**🗣️ Kaynak:** {chat['user']}")
+        st.info(f"{icon} **Duygu:** {current_mood}")
+        st.code(chat['ai'], language=None)
+        st.audio(chat['audio'], format="audio/mp3")
+        st.divider()
