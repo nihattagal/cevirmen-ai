@@ -10,11 +10,12 @@ import datetime
 import urllib.parse
 import difflib
 import random
+from fpdf import FPDF
 
 # --- 1. GENEL AYARLAR ---
 st.set_page_config(
-    page_title="LinguaFlow Academy",
-    page_icon="🎓",
+    page_title="LinguaFlow Pro",
+    page_icon="🚀",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -26,7 +27,7 @@ st.markdown("""
     
     .header-logo { 
         font-size: 2.2rem; font-weight: 800; color: #1e293b; 
-        text-align: center; letter-spacing: -0.5px; margin-top: -20px;
+        text-align: center; margin-top: -20px; letter-spacing: -0.5px;
     }
     
     .stTextArea textarea {
@@ -42,19 +43,9 @@ st.markdown("""
         white-space: pre-wrap; box-shadow: 0 2px 4px rgba(0,0,0,0.02);
     }
     
-    .diff-container { background: white; padding: 20px; border-radius: 12px; border: 1px solid #cbd5e1; font-family: monospace; }
-    .diff-del { background-color: #fecaca; text-decoration: line-through; color: #991b1b; padding: 2px 4px; border-radius: 4px; }
-    .diff-add { background-color: #bbf7d0; color: #166534; padding: 2px 4px; border-radius: 4px; font-weight: bold; }
-    
-    .flashcard {
-        background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
-        color: white; padding: 40px; border-radius: 20px; text-align: center;
-        font-size: 1.5rem; font-weight: bold; box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.4);
-        margin-bottom: 20px; cursor: pointer;
-    }
-    .flashcard-reveal {
-        background: white; color: #1e293b; border: 2px solid #e2e8f0;
-    }
+    /* Roleplay Balonları */
+    .rp-ai { background: #f1f5f9; padding: 15px; border-radius: 15px 15px 15px 0; margin-bottom: 10px; border-left: 4px solid #475569; }
+    .rp-user { background: #e0e7ff; padding: 15px; border-radius: 15px 15px 0 15px; margin-bottom: 10px; text-align: right; border-right: 4px solid #4f46e5; }
 
     div.stButton > button {
         background-color: #0f172a; color: white; border: none; border-radius: 8px;
@@ -75,57 +66,56 @@ except:
 if "history" not in st.session_state: st.session_state.history = []
 if "res_text" not in st.session_state: st.session_state.res_text = ""
 if "input_val" not in st.session_state: st.session_state.input_val = ""
-if "diff_html" not in st.session_state: st.session_state.diff_html = ""
-if "flashcard_idx" not in st.session_state: st.session_state.flashcard_idx = -1
-if "show_answer" not in st.session_state: st.session_state.show_answer = False
+if "rp_history" not in st.session_state: st.session_state.rp_history = [] # Roleplay geçmişi
+if "rp_scenario" not in st.session_state: st.session_state.rp_scenario = ""
 
 # --- 5. MOTOR ---
-def ai_engine(text, task, target_lang="English", tone="Normal", glossary=""):
+def ai_engine(text, task, target_lang="English", tone="Normal", glossary="", extra_ctx=""):
     if not text: return ""
     
     glossary_prompt = f"TERMİNOLOJİ: \n{glossary}" if glossary else ""
 
     if task == "translate":
-        sys_msg = f"Sen uzman tercümansın. Hedef: {target_lang}. Ton: {tone}. {glossary_prompt}. Sadece çeviriyi ver."
+        sys_msg = f"Sen tercümansın. Hedef: {target_lang}. Ton: {tone}. {glossary_prompt}. Sadece çeviriyi ver."
     elif task == "improve":
-        sys_msg = "Editörsün. Metni düzelt. Sadece düzeltilmiş metni ver. Açıklama yapma."
+        sys_msg = "Editörsün. Metni düzelt. Sadece düzeltilmiş metni ver."
     elif task == "summarize":
-        # GÜNCELLENEN KISIM: Çeviri vurgusu yapıldı
+        sys_msg = f"Analistsin. Metni {target_lang} dilinde özetle."
+    elif task == "roleplay":
         sys_msg = f"""
-        Sen bir analiz uzmanısın.
-        GÖREV: Verilen metni analiz et ve {target_lang} diline çevirerek özetle.
-        ÇIKTI FORMATI:
-        1. 📋 Genel Özet ({target_lang})
-        2. 💡 Önemli Noktalar ({target_lang})
-        NOT: Çıktı tamamen {target_lang} dilinde olmalı.
+        Sen bir dil eğitmenisin ve şu senaryoyu oynuyorsun: {extra_ctx}.
+        Kullanıcıya cevap ver ve konuşmayı sürdür.
+        Cevabın sonuna parantez içinde (Kullanıcının hatası varsa düzelt) notunu ekle.
+        Dil: {target_lang}.
         """
 
     try:
-        res = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": text[:15000]}]
-        )
-        result = res.choices[0].message.content
+        msgs = [{"role": "system", "content": sys_msg}]
+        # Roleplay için geçmişi ekle
+        if task == "roleplay":
+            for msg in st.session_state.rp_history[-6:]: # Son 6 mesajı hatırla
+                msgs.append(msg)
         
-        if task == "translate":
-            ts = datetime.datetime.now().strftime("%d/%m")
-            st.session_state.history.insert(0, {"ts": ts, "src": text, "trg": result})
-            
-        return result
+        msgs.append({"role": "user", "content": text[:15000]})
+
+        res = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=msgs)
+        return res.choices[0].message.content
     except Exception as e: return f"Hata: {e}"
 
-def generate_diff(original, corrected):
-    d = difflib.Differ()
-    diff = list(d.compare(original.split(), corrected.split()))
-    html = []
-    for token in diff:
-        if token.startswith("- "):
-            html.append(f"<span class='diff-del'>{token[2:]}</span>")
-        elif token.startswith("+ "):
-            html.append(f"<span class='diff-add'>{token[2:]}</span>")
-        elif token.startswith("  "):
-            html.append(token[2:])
-    return " ".join(html)
+def create_pdf(title, content):
+    """Basit PDF Raporlayıcı"""
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(0, 10, title.encode('latin-1', 'replace').decode('latin-1'), ln=True, align='C')
+    pdf.ln(10)
+    pdf.set_font("Arial", '', 12)
+    
+    # Türkçe karakter sorunu için basit replace (FPDF unicode desteği sınırlı)
+    content = content.replace('ğ','g').replace('Ğ','G').replace('ş','s').replace('Ş','S').replace('İ','I').replace('ı','i')
+    
+    pdf.multi_cell(0, 10, content.encode('latin-1', 'replace').decode('latin-1'))
+    return pdf.output(dest='S').encode('latin-1')
 
 def create_audio(text, lang_name, speed=False):
     code_map = {"Türkçe": "tr", "İngilizce": "en", "Almanca": "de", "Fransızca": "fr", "Español": "es", "Rusça": "ru", "Arapça": "ar", "Çince": "zh"}
@@ -157,26 +147,26 @@ def local_read_web(url):
 
 with st.sidebar:
     st.title("LinguaFlow")
-    st.caption("Academy Edition v26.2")
+    st.caption("Business Edition v27.0")
     
     st.markdown("### ⚙️ Ayarlar")
-    speed_opt = st.select_slider("Konuşma Hızı", options=["Yavaş", "Normal"], value="Normal")
+    speed_opt = st.select_slider("Hız", options=["Yavaş", "Normal"], value="Normal")
     is_slow = True if speed_opt == "Yavaş" else False
     
     with st.expander("📚 Sözlük"):
         glossary_txt = st.text_area("Örn: AI=Yapay Zeka", height=70)
 
     st.divider()
-    st.markdown("### 🕒 Son Çeviriler")
+    st.markdown("### 🕒 Geçmiş")
     if st.session_state.history:
         for item in st.session_state.history[:5]:
-            st.caption(f"{item['src'][:20]}.. → {item['trg'][:20]}..")
+            st.caption(f"• {item['src'][:30]}..")
         if st.button("Temizle"): st.session_state.history = []; st.rerun()
 
-st.markdown('<div class="header-logo">LinguaFlow Academy</div>', unsafe_allow_html=True)
+st.markdown('<div class="header-logo">LinguaFlow Pro</div>', unsafe_allow_html=True)
 
-tab_text, tab_practice, tab_voice, tab_files, tab_web = st.tabs(["📝 Metin & Analiz", "🧠 Alıştırma", "🎙️ Ses", "📂 Dosya", "🔗 Web"])
-LANG_OPTIONS = ["Türkçe", "English", "Deutsch", "Français", "Español", "Italiano", "Русский", "العربية", "中文"]
+tab_text, tab_roleplay, tab_voice, tab_files, tab_web = st.tabs(["📝 Metin", "🎭 Rol Yapma", "🎙️ Ses", "📂 Dosya", "🔗 Web"])
+LANG_OPTIONS = ["English", "Türkçe", "Deutsch", "Français", "Español", "Italiano", "Русский", "العربية", "中文"]
 
 # --- 1. METİN ---
 with tab_text:
@@ -185,100 +175,82 @@ with tab_text:
     with c3: target_lang = st.selectbox("Hedef", LANG_OPTIONS, label_visibility="collapsed")
 
     col_in, col_out = st.columns(2)
-    
     with col_in:
         input_text = st.text_area("Metin", value=st.session_state.input_val, height=250, placeholder="Yazın...", label_visibility="collapsed")
-        
-        b1, b2, b3 = st.columns([2, 2, 1])
-        with b1:
-            if st.button("Çevir ➔"):
-                if input_text:
-                    with st.spinner("..."):
-                        st.session_state.res_text = ai_engine(input_text, "translate", target_lang, "Normal", glossary_txt)
-                        st.session_state.diff_html = ""
-                        st.session_state.input_val = input_text
-        with b2:
-            if st.button("🔍 Hataları Bul (Diff)"):
-                if input_text:
-                    with st.spinner("İnceleniyor..."):
-                        corrected = ai_engine(input_text, "improve")
-                        st.session_state.res_text = corrected
-                        st.session_state.diff_html = generate_diff(input_text, corrected)
-        with b3: tone = st.selectbox("Ton", ["Normal", "Resmi"], label_visibility="collapsed")
+        if st.button("Çevir ➔"):
+            if input_text:
+                with st.spinner("..."):
+                    st.session_state.res_text = ai_engine(input_text, "translate", target_lang, "Normal", glossary_txt)
+                    st.session_state.input_val = input_text
+                    
+                    # Geçmişe ekle
+                    ts = datetime.datetime.now().strftime("%H:%M")
+                    st.session_state.history.insert(0, {"src": input_text, "trg": st.session_state.res_text})
 
     with col_out:
-        if st.session_state.diff_html:
-            st.markdown(f"<div class='diff-container'>{st.session_state.diff_html}</div>", unsafe_allow_html=True)
-            st.caption("🔴 Silinen  🟢 Eklenen")
-        else:
-            res = st.session_state.res_text
-            st.markdown(f"""<div class="result-box">{res if res else '...'}</div>""", unsafe_allow_html=True)
-            
-            if res:
-                st.write("")
-                ca, cb = st.columns([1, 4])
-                with ca:
-                    aud = create_audio(res, target_lang, is_slow)
-                    if aud: st.audio(aud, format="audio/mp3")
-                with cb: st.code(res, language=None)
+        res = st.session_state.res_text
+        st.markdown(f"""<div class="result-box">{res if res else '...'}</div>""", unsafe_allow_html=True)
+        if res:
+            st.write("")
+            ca, cb = st.columns([1, 4])
+            with ca:
+                aud = create_audio(res, target_lang, is_slow)
+                if aud: st.audio(aud, format="audio/mp3")
+            with cb: st.code(res, language=None)
 
-# --- 2. ALIŞTIRMA ---
-with tab_practice:
-    if len(st.session_state.history) < 3:
-        st.info("🧠 Alıştırma için 'Metin' sekmesinde en az 3 çeviri yapın.")
-    else:
-        c1, c2, c3 = st.columns([1, 2, 1])
-        with c2:
-            if st.button("🎲 Yeni Kart Çek", use_container_width=True):
-                st.session_state.flashcard_idx = random.randint(0, len(st.session_state.history)-1)
-                st.session_state.show_answer = False
-                st.rerun()
-            
-            if st.session_state.flashcard_idx >= 0:
-                card = st.session_state.history[st.session_state.flashcard_idx]
-                st.markdown(f"<div class='flashcard'>{card['src']}</div>", unsafe_allow_html=True)
-                if st.button("👁️ Cevabı Göster"):
-                    st.session_state.show_answer = True
-                    st.rerun()
-                if st.session_state.show_answer:
-                    st.markdown(f"<div class='flashcard flashcard-reveal'>{card['trg']}</div>", unsafe_allow_html=True)
+# --- 2. ROL YAPMA (ROLEPLAY) ---
+with tab_roleplay:
+    c_sc, c_lang = st.columns([3, 1])
+    with c_sc:
+        scenario = st.selectbox("Senaryo Seçin:", ["Restoranda Sipariş", "Otel Check-in", "İş Görüşmesi", "Adres Sorma", "Doktorda", "Serbest Sohbet"])
+    with c_lang:
+        rp_lang = st.selectbox("Pratik Dili", LANG_OPTIONS, index=0) # Default English
+
+    # Senaryo değişirse geçmişi temizle
+    if scenario != st.session_state.rp_scenario:
+        st.session_state.rp_scenario = scenario
+        st.session_state.rp_history = []
+        # İlk mesajı AI başlatsın
+        start_msg = ai_engine("Başlangıç cümlesi kur.", "roleplay", rp_lang, extra_ctx=scenario)
+        st.session_state.rp_history.append({"role": "assistant", "content": start_msg})
+        st.rerun()
+
+    # Sohbet Alanı
+    for msg in st.session_state.rp_history:
+        cls = "rp-ai" if msg['role'] == "assistant" else "rp-user"
+        icon = "🤖" if msg['role'] == "assistant" else "👤"
+        st.markdown(f"<div class='{cls}'><b>{icon}</b> {msg['content']}</div>", unsafe_allow_html=True)
+
+    # Giriş
+    rp_input = st.text_input("Cevabınız...", key="rp_in")
+    if st.button("Gönder") and rp_input:
+        st.session_state.rp_history.append({"role": "user", "content": rp_input})
+        with st.spinner("AI yazıyor..."):
+            reply = ai_engine(rp_input, "roleplay", rp_lang, extra_ctx=scenario)
+            st.session_state.rp_history.append({"role": "assistant", "content": reply})
+        st.rerun()
+        
+    if st.button("Senaryoyu Sıfırla", type="secondary"):
+        st.session_state.rp_history = []
+        st.session_state.rp_scenario = "" # Trigger reset
+        st.rerun()
 
 # --- 3. SES ---
 with tab_voice:
-    mode = st.radio("Mod:", ["🗣️ Sohbet", "🎙️ Konferans"], horizontal=True)
-    st.divider()
-    if "Sohbet" in mode:
-        c1, c2 = st.columns(2)
-        with c1:
-            st.info("SİZ")
-            a1 = audio_recorder(text="", icon_size="3x", key="v1", recording_color="#3b82f6")
-            if a1:
-                txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(a1)), model="whisper-large-v3").text
-                res = ai_engine(txt, "translate", target_lang, glossary=glossary_txt)
-                st.success(f"{txt} -> {res}")
-                aud = create_audio(res, target_lang, is_slow)
-                if aud: st.audio(aud, format="audio/mp3", autoplay=True)
-        with c2:
-            st.warning(f"MİSAFİR ({target_lang})")
-            a2 = audio_recorder(text="", icon_size="3x", key="v2", recording_color="#ec4899")
-            if a2:
-                txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(a2)), model="whisper-large-v3").text
-                res = ai_engine(txt, "translate", "Türkçe", glossary=glossary_txt)
-                st.info(f"{txt} -> {res}")
-                aud = create_audio(res, "Türkçe", is_slow)
-                if aud: st.audio(aud, format="audio/mp3", autoplay=True)
-    else:
-        c1, c2 = st.columns([1, 3])
-        with c1:
-            ac = audio_recorder(text="BAŞLAT / DURDUR", icon_size="2x", recording_color="#dc2626", pause_threshold=20.0)
-        with c2:
-            if ac:
-                with st.spinner("Analiz..."):
-                    txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(ac)), model="whisper-large-v3").text
-                    trans = ai_engine(txt, "translate", target_lang, glossary=glossary_txt)
-                    st.success(f"Orijinal: {txt}")
-                    st.info(f"Çeviri: {trans}")
-                    st.download_button("İndir", f"{txt}\n{trans}", "kayit.txt")
+    c1, c2 = st.columns([1, 3])
+    with c1: st.write("Sürekli Dinleme")
+    with c2:
+        ac = audio_recorder(text="BAŞLAT / DURDUR", icon_size="2x", recording_color="#dc2626", pause_threshold=20.0)
+        if ac:
+            with st.spinner("Analiz..."):
+                txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(ac)), model="whisper-large-v3").text
+                trans = ai_engine(txt, "translate", target_lang, glossary=glossary_txt)
+                st.success(f"Orijinal: {txt}")
+                st.info(f"Çeviri: {trans}")
+                
+                # PDF Rapor
+                pdf = create_pdf("Toplanti Raporu", f"KAYNAK:\n{txt}\n\nCEVIRI:\n{trans}")
+                st.download_button("📄 PDF Raporu İndir", pdf, "toplanti.pdf", "application/pdf")
 
 # --- 4. DOSYA ---
 with tab_files:
@@ -291,24 +263,23 @@ with tab_files:
                     mode = "translate" if len(raw) < 3000 else "summarize"
                     res = ai_engine(raw, mode, target_lang, glossary=glossary_txt)
                     st.markdown(f"<div class='result-box'>{res}</div>", unsafe_allow_html=True)
-                    st.download_button("İndir", res, "sonuc.txt")
+                    
+                    pdf = create_pdf("Dosya Analizi", res)
+                    st.download_button("📄 PDF İndir", pdf, "analiz.pdf", "application/pdf")
                 else: st.error("Hata.")
 
-# --- 5. WEB (DİL SEÇİMİ EKLENDİ) ---
+# --- 5. WEB ---
 with tab_web:
-    c_url, c_lang = st.columns([3, 1])
-    with c_url:
-        url = st.text_input("URL", placeholder="https://...")
-    with c_lang:
-        web_lang = st.selectbox("Rapor Dili", LANG_OPTIONS, key="w_lang") # Dil Seçimi Eklendi
-
-    if st.button("Siteyi Analiz Et") and url:
-        with st.spinner("Site okunuyor ve çevriliyor..."):
+    url = st.text_input("URL")
+    if st.button("Analiz") and url:
+        with st.spinner("..."):
             txt = local_read_web(url)
             if txt:
-                res = ai_engine(txt, "summarize", target_lang=web_lang) # Seçili dil gönderiliyor
+                res = ai_engine(txt, "summarize", target_lang=target_lang) # Hedef dili kullan
                 st.markdown(f"<div class='result-box'>{res}</div>", unsafe_allow_html=True)
-                st.download_button("İndir", res, "web.txt")
-            else: st.error("Siteye erişilemedi (Güvenlik duvarı olabilir).")
+                
+                pdf = create_pdf(f"Web Analizi: {url[:30]}...", res)
+                st.download_button("📄 PDF İndir", pdf, "web_analiz.pdf", "application/pdf")
+            else: st.error("Hata.")
 
 st.divider()
