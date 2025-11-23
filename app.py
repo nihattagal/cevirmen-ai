@@ -1,57 +1,73 @@
 import streamlit as st
 from groq import Groq
-from streamlit_audiorecorder import audiorecorder
+from audio_recorder_streamlit import audio_recorder # Yeni kütüphane
+import io
 
-st.set_page_config(page_title="AI Çevirmen")
+st.set_page_config(page_title="AI Çevirmen", layout="centered")
 
 st.title("🎤 AI Canlı Çevirmen")
 
-# Sol Menü
+# Sidebar
 with st.sidebar:
     st.header("Ayarlar")
     api_key = st.text_input("Groq API Anahtarı:", type="password")
-    user_mode = st.selectbox("Mod:", ("Resmi", "Samimi", "Turist"))
-    target_lang = st.selectbox("Hedef Dil:", ("İngilizce", "Türkçe", "Almanca"))
+    user_mode = st.selectbox("Mod:", ("Resmi", "Samimi", "Turist", "Agresif"))
+    target_lang = st.selectbox("Hedef Dil:", ("İngilizce", "Türkçe", "Almanca", "İspanyolca"))
 
 if not api_key:
     st.warning("Lütfen API anahtarını girin.")
     st.stop()
 
-client = Groq(api_key=api_key)
+try:
+    client = Groq(api_key=api_key)
+except:
+    st.error("API Anahtarı hatalı.")
+    st.stop()
 
-# Ses Kaydedici
-st.write("Mikrofon butonuna basın, konuşun ve tekrar basıp durdurun:")
-audio = audiorecorder("Başlat", "Durdur")
+st.write("Mikrofon butonuna basarak kaydı başlatın, tekrar basarak durdurun:")
 
-if len(audio) > 0:
-    # 1. Kaydı Oynat
-    st.audio(audio.export().read())
+# --- YENİ KAYDEDİCİ ---
+# Bu kaydedici sesi direkt hafızaya (bytes) alır
+audio_bytes = audio_recorder(
+    text="",
+    recording_color="#e8b62c",
+    neutral_color="#6aa36f",
+    icon_name="microphone",
+    icon_size="2x",
+)
 
-    # 2. Kaydı Dosyaya Yaz
-    audio.export("temp.wav", format="wav")
-
+if audio_bytes:
+    # 1. Sesi oynat
+    st.audio(audio_bytes, format="audio/wav")
+    
     with st.spinner('Çevriliyor...'):
         try:
+            # Sesi API'ye göndermek için dosya formatına çeviriyoruz
+            # (BytesIO kullanarak sanal bir dosya oluşturuyoruz)
+            audio_file = io.BytesIO(audio_bytes)
+            audio_file.name = "audio.wav"
+            
             # Whisper (Sesi Yazıya Dök)
-            with open("temp.wav", "rb") as file:
-                transcription = client.audio.transcriptions.create(
-                    file=("temp.wav", file.read()),
-                    model="whisper-large-v3",
-                    response_format="text"
-                )
+            transcription = client.audio.transcriptions.create(
+                file=("audio.wav", audio_file), 
+                model="whisper-large-v3",
+                response_format="text"
+            )
             
             st.success(f"Algılanan: {transcription}")
-
+            
             # Llama 3 (Çeviri Yap)
+            system_prompt = f"Sen çevirmensin. Mod: {user_mode}. Hedef: {target_lang}. Sadece çeviriyi yaz."
+            
             completion = client.chat.completions.create(
                 model="llama3-8b-8192",
                 messages=[
-                    {"role": "system", "content": f"Sen çevirmensin. Mod: {user_mode}. Hedef Dil: {target_lang}. Sadece çeviriyi yaz."},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": transcription}
                 ],
             )
             
             st.markdown(f"### 🚀 {completion.choices[0].message.content}")
-
+            
         except Exception as e:
-            st.error(f"Hata: {e}")
+            st.error(f"Hata oluştu: {str(e)}")
