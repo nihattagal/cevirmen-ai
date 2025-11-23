@@ -17,14 +17,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- STATE YÖNETİMİ (EN BAŞTA) ---
+# --- 2. STATE YÖNETİMİ (HATAYI ÇÖZEN KISIM BURASI) ---
+# Tüm hafıza değişkenlerini en başta tanımlıyoruz ki 'bulunamadı' hatası vermesin.
 if "theme" not in st.session_state: st.session_state.theme = "Light"
 if "history" not in st.session_state: st.session_state.history = []
 if "res_text" not in st.session_state: st.session_state.res_text = ""
 if "input_val" not in st.session_state: st.session_state.input_val = ""
+if "detected_lang" not in st.session_state: st.session_state.detected_lang = "" # <-- EKSİK OLAN BUYDU
+if "stats_trans" not in st.session_state: st.session_state.stats_trans = 0
 if "target_lang_idx" not in st.session_state: st.session_state.target_lang_idx = 0
 
-# --- 2. DINAMIK CSS (TEMA DESTEĞİ) ---
+# --- 3. DINAMIK CSS ---
 def get_css(theme):
     if theme == "Dark":
         bg_color = "#0e1117"
@@ -45,38 +48,31 @@ def get_css(theme):
     <style>
     .stApp {{ background-color: {bg_color}; color: {txt_color}; font-family: 'Inter', sans-serif; }}
     
-    /* Başlık */
     .header-logo {{ 
         font-size: 2.2rem; font-weight: 800; color: {txt_color}; 
         text-align: center; margin-top: -20px; letter-spacing: -1px;
     }}
     
-    /* Metin Alanları */
     .stTextArea textarea {{
         border: 1px solid {border_color}; border-radius: 12px;
         font-size: 1.1rem; height: 250px !important; padding: 15px;
         background: {box_bg}; color: {txt_color}; resize: none;
     }}
-    .stTextArea textarea:focus {{ border-color: #6366f1; }}
     
-    /* Sonuç Kutusu */
     .result-box {{
         background-color: {box_bg}; border: 1px solid {border_color}; border-radius: 12px;
         min-height: 250px; padding: 20px; font-size: 1.1rem; color: {txt_color};
         white-space: pre-wrap; box-shadow: 0 2px 4px rgba(0,0,0,0.05); position: relative;
     }}
     
-    /* Butonlar */
     div.stButton > button {{
         background-color: {btn_bg}; color: white; border: none; border-radius: 8px;
         padding: 10px; font-weight: 600; width: 100%; transition: all 0.2s;
     }}
     div.stButton > button:hover {{ background-color: {btn_hover}; transform: translateY(-1px); }}
     
-    /* İkincil Butonlar */
     .secondary-btn div.stButton > button {{ background-color: #64748b; }}
     
-    /* Geçmiş Kartı */
     .history-item {{
         padding: 10px; margin-bottom: 8px; background: {box_bg}; border-radius: 8px;
         font-size: 0.85rem; border-left: 4px solid #6366f1; color: {txt_color};
@@ -87,16 +83,18 @@ def get_css(theme):
 
 st.markdown(get_css(st.session_state.theme), unsafe_allow_html=True)
 
-# --- 3. API ---
+# --- 4. API ---
 try:
     client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 except:
     st.error("⚠️ API Key Eksik!")
     st.stop()
 
-# --- 4. MOTOR ---
+# --- 5. MOTOR ---
 def ai_engine(text, task, target_lang="English", tone="Normal", glossary="", idiom_active=False):
-    if not text: return ""
+    if not text: return "", ""
+    
+    st.session_state.stats_trans += 1
     
     glossary_prompt = f"TERMİNOLOJİ: \n{glossary}" if glossary else ""
     idiom_prompt = "Deyim varsa açıkla." if idiom_active else ""
@@ -155,19 +153,18 @@ def local_read_web(url):
     try:
         h = {'User-Agent': 'Mozilla/5.0'}
         soup = BeautifulSoup(requests.get(url, headers=h, timeout=10).content, 'html.parser')
-        return " ".join([p.get_text() for p in soup.find_all(['p', 'h1', 'h2'])])[:15000]
+        return " ".join([p.get_text() for p in soup.find_all(['p', 'h1', 'h2'])])[:10000]
     except: return None
 
 # ==========================================
 # ARAYÜZ
 # ==========================================
 
-# --- YAN MENÜ (SEKMELİ & DÜZENLİ) ---
+# --- YAN MENÜ ---
 with st.sidebar:
     st.title("LinguaFlow")
     
-    # Yan Menü Sekmeleri
-    sb_tab1, sb_tab2, sb_tab3 = st.tabs(["⚙️ Ayarlar", "🕒 Geçmiş", "ℹ️ Hakkında"])
+    sb_tab1, sb_tab2 = st.tabs(["⚙️ Ayarlar", "🕒 Geçmiş"])
     
     with sb_tab1:
         st.subheader("Görünüm")
@@ -177,37 +174,28 @@ with st.sidebar:
             st.rerun()
             
         st.divider()
-        st.subheader("Çeviri Ayarları")
         idiom_mode = st.checkbox("🧐 Deyim Modu", value=False)
         speech_slow = st.checkbox("🐢 Yavaş Okuma", value=False)
-        
-        st.caption("Özel Terimler (Sözlük)")
-        glossary_txt = st.text_area("Örn: AI=Yapay Zeka", height=60, label_visibility="collapsed")
+        glossary_txt = st.text_area("Özel Terimler (Sözlük)", placeholder="Örn: AI=Yapay Zeka", height=60)
 
     with sb_tab2:
         if st.session_state.history:
             for item in st.session_state.history[:8]:
                 st.markdown(f"<div class='history-item'><small>{item['time']}</small><br>{item['src']}</div>", unsafe_allow_html=True)
-            
-            st.markdown('<div class="secondary-btn">', unsafe_allow_html=True)
             if st.button("Temizle"):
                 st.session_state.history = []
                 st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
         else:
-            st.info("İşlem geçmişi boş.")
-
-    with sb_tab3:
-        st.info("LinguaFlow AI v20.0\n\nMetin, Ses, Dosya ve Web analizi için hepsi bir arada çözüm.")
+            st.info("Geçmiş boş.")
 
 # --- BAŞLIK ---
 st.markdown('<div class="header-logo">LinguaFlow Pro</div>', unsafe_allow_html=True)
 
-# --- ANA SEKMELER ---
+# --- SEKMELER ---
 tab_text, tab_voice, tab_files, tab_web = st.tabs(["📝 Metin & Dikte", "🎙️ Sesli Sohbet", "📂 Dosya", "🔗 Web"])
 LANG_OPTIONS = ["English", "Türkçe", "Deutsch", "Français", "Español", "Italiano", "Русский", "العربية", "中文"]
 
-# --- 1. METİN & DİKTE ---
+# --- 1. METİN ---
 with tab_text:
     c1, c2, c3, c4 = st.columns([3, 1, 3, 1])
     with c1: st.markdown("**Giriş (Otomatik)**")
@@ -217,16 +205,14 @@ with tab_text:
     
     with c2:
         st.markdown('<div class="secondary-btn">', unsafe_allow_html=True)
-        if st.button("⇄"): # Swap Language visual only for now or logic update
+        if st.button("⇄"):
              st.session_state.target_lang_idx = 1 if st.session_state.target_lang_idx == 0 else 0
              st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
     col_in, col_out = st.columns(2)
     
-    # SOL
     with col_in:
-        # Dikte
         mc, tc = st.columns([1, 8])
         with mc: audio_in = audio_recorder(text="", icon_size="2x", recording_color="#ef4444", neutral_color="#333", key="dict")
         with tc: st.caption("Konuşarak yaz")
@@ -249,16 +235,12 @@ with tab_text:
                 st.session_state.res_text = txt
                 st.session_state.detected_lang = lang
                 st.session_state.input_val = input_text
-                # Geçmiş
                 ts = datetime.datetime.now().strftime("%H:%M")
                 st.session_state.history.insert(0, {"time": ts, "src": input_text[:20]+".."})
 
-    # SAĞ
     with col_out:
-        # Boşluk hizalama
         st.write("") 
         st.write("")
-        
         res = st.session_state.res_text
         d_lang = st.session_state.detected_lang
         
@@ -296,7 +278,7 @@ with tab_voice:
             a1 = audio_recorder(text="", icon_size="3x", key="v1", recording_color="#3b82f6")
             if a1:
                 txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(a1)), model="whisper-large-v3").text
-                lang, res = ai_engine(txt, "translate", target_lang, glossary=glossary_txt).split("|||")[-1], ai_engine(txt, "translate", target_lang, glossary=glossary_txt)
+                lang, res = ai_engine(txt, "translate", target_lang, glossary=glossary_txt, idiom_active=idiom_mode)
                 st.success(f"{txt} -> {res}")
                 aud = create_audio(res, target_lang, speech_slow)
                 if aud: st.audio(aud, format="audio/mp3", autoplay=True)
@@ -305,7 +287,7 @@ with tab_voice:
             a2 = audio_recorder(text="", icon_size="3x", key="v2", recording_color="#ec4899")
             if a2:
                 txt = client.audio.transcriptions.create(file=("a.wav", io.BytesIO(a2)), model="whisper-large-v3").text
-                res = ai_engine(txt, "translate", "Türkçe", glossary=glossary_txt).split("|||")[-1]
+                lang, res = ai_engine(txt, "translate", "Türkçe", glossary=glossary_txt, idiom_active=idiom_mode)
                 st.info(f"{txt} -> {res}")
                 aud = create_audio(res, "Türkçe", speech_slow)
                 if aud: st.audio(aud, format="audio/mp3", autoplay=True)
