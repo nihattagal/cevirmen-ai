@@ -45,7 +45,7 @@ with st.sidebar:
     }
     target_lang_code = lang_codes[target_lang_name]
 
-    # 3. YENİ ÖZELLİK: HIZ AYARI
+    # 3. Hız Ayarı
     st.divider()
     tts_slow = st.checkbox("🐢 Yavaş Okuma Modu", value=False)
     st.divider()
@@ -92,7 +92,7 @@ if "summary_result" in st.session_state:
 # --- ANA EKRAN (SEKMELER) ---
 tab1, tab2 = st.tabs(["🎙️ Canlı Mikrofon", "📂 Dosya Yükle"])
 
-# --- FONKSİYON: SES İŞLEME MOTORU (Kod tekrarını önlemek için) ---
+# --- FONKSİYON: SES İŞLEME MOTORU ---
 def process_audio(audio_file_input, source_name="Mikrofon"):
     with st.spinner(f'{source_name} işleniyor...'):
         try:
@@ -128,7 +128,7 @@ def process_audio(audio_file_input, source_name="Mikrofon"):
                 mood = "Nötr"
                 translation = full_res
 
-            # 3. Seslendir (Hız ayarlı)
+            # 3. Seslendir
             tts = gTTS(text=translation, lang=target_lang_code, slow=tts_slow)
             audio_fp = io.BytesIO()
             tts.write_to_fp(audio_fp)
@@ -141,7 +141,7 @@ def process_audio(audio_file_input, source_name="Mikrofon"):
                 "mood": mood,
                 "audio": audio_data
             })
-            st.rerun() # Ekranı yenile ki mesaj görünsün
+            st.rerun()
             
         except Exception as e:
             st.error(f"Hata: {str(e)}")
@@ -151,7 +151,7 @@ with tab1:
     if work_mode == "⚡ Sohbet":
         icon_color = "#e8b62c" 
         pause_limit = 2.0 
-        st.info("Bas-Konuş Modu")
+        st.info("Bas-Konuş Modu (En az 1 saniye konuşun)")
     else:
         icon_color = "#FF0000" 
         pause_limit = 300.0 
@@ -162,9 +162,14 @@ with tab1:
         mic_audio = audio_recorder(text="", recording_color=icon_color, neutral_color="#333333", icon_name="microphone", icon_size="5x", pause_threshold=pause_limit, sample_rate=44100)
     
     if mic_audio:
-        audio_file = io.BytesIO(mic_audio)
-        audio_file.name = "audio.wav"
-        process_audio(audio_file, "Mikrofon")
+        # --- HATA DÜZELTME KODU (BURASI EKLENDİ) ---
+        # Eğer ses verisi çok küçükse (sadece tıklama sesi gibiyse) işlem yapma
+        if len(mic_audio) > 1000: # 1000 byte alt sınır
+            audio_file = io.BytesIO(mic_audio)
+            audio_file.name = "audio.wav"
+            process_audio(audio_file, "Mikrofon")
+        else:
+            st.warning("⚠️ Ses çok kısa! Lütfen butona basıp biraz konuşun.")
 
 # --- SEKME 2: DOSYA YÜKLEME ---
 with tab2:
@@ -173,7 +178,6 @@ with tab2:
     
     if uploaded_file is not None:
         if st.button("🚀 Dosyayı Çevir ve Analiz Et"):
-            # Dosyayı direkt işleyebiliriz
             process_audio(uploaded_file, "Dosya")
 
 # --- SOHBET GEÇMİŞİ ---
