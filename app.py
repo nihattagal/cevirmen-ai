@@ -52,10 +52,12 @@ with st.sidebar:
     }
     target_lang_code = lang_codes[target_lang_name]
 
-    # İndirme Butonu
+    # --- İNDİRME BUTONU (HATA DÜZELTİLDİ: .get() kullanıldı) ---
     chat_text = ""
     for chat in st.session_state.chat_history:
-        chat_text += f"Kaynak: {chat['user']}\nAnaliz: {chat['mood']}\nÇeviri: {chat['ai']}\n-------------------\n"
+        # Eski kayıtlarda 'mood' yoksa 'Nötr' varsayalım
+        mood_info = chat.get('mood', 'Nötr')
+        chat_text += f"Kaynak: {chat['user']}\nAnaliz: {mood_info}\nÇeviri: {chat['ai']}\n-------------------\n"
     
     st.download_button(
         label="📥 Dökümü İndir (TXT)",
@@ -108,7 +110,6 @@ if audio_bytes:
             )
             
             # C. Çevir + Analiz Et (Llama Prompt)
-            # Yapay zekadan özel bir formatta cevap istiyoruz: "DUYGU ||| ÇEVİRİ"
             system_prompt = f"""
             Sen uzman bir tercüman ve psikologsun.
             Hedef Dil: {target_lang_name}.
@@ -133,7 +134,7 @@ if audio_bytes:
             )
             full_response = completion.choices[0].message.content
 
-            # Cevabı Parçala (Duygu ve Metni ayır)
+            # Cevabı Parçala
             if "|||" in full_response:
                 parts = full_response.split("|||")
                 mood = parts[0].strip()
@@ -162,7 +163,6 @@ if audio_bytes:
 # --- SOHBET GÖRÜNÜMÜ ---
 st.divider()
 
-# Duygulara göre renk/ikon sözlüğü
 mood_icons = {
     "Kızgın": "😡", "Öfkeli": "😡", "Sinirli": "😠",
     "Mutlu": "😊", "Sevinçli": "😁", "Heyecanlı": "🤩",
@@ -173,9 +173,10 @@ mood_icons = {
 
 for chat in reversed(st.session_state.chat_history):
     with st.container():
-        # Duygu İkonunu Bul
-        current_mood = chat['mood']
-        # Basit bir eşleştirme yap, bulamazsa varsayılan ikon koy
+        # HATA DÜZELTİLDİ: .get() kullanarak güvenli veri çekme
+        current_mood = chat.get('mood', 'Nötr')
+        
+        # İkon seçimi
         icon = "😶"
         for key, val in mood_icons.items():
             if key in current_mood:
@@ -190,10 +191,10 @@ for chat in reversed(st.session_state.chat_history):
         </div>
         """, unsafe_allow_html=True)
         
-        # 2. Satır: Çeviri + Duygu (Renkli Kutu)
-        st.info(f"{icon} **Duygu:** {chat['mood']}")
+        # 2. Satır: Çeviri + Duygu
+        st.info(f"{icon} **Duygu:** {current_mood}")
         
-        # 3. Satır: Kopyalanabilir Çeviri Metni (st.code otomatik kopyalama butonu sağlar!)
+        # 3. Satır: Kopyalanabilir Çeviri
         st.code(chat['ai'], language=None)
         
         # 4. Satır: Ses Oynatıcı
