@@ -7,13 +7,52 @@ import datetime
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(
-    page_title="AI Tercüman Pro",
-    page_icon="🧠",
+    page_title="AI Tercüman Elite",
+    page_icon="💎",
     layout="centered"
 )
 
+# --- 🎨 ÖZEL TASARIM (CSS) ---
+# Burası uygulamanın "Makyaj" kısmıdır.
+st.markdown("""
+    <style>
+    /* Ana Başlık */
+    .main-title {
+        text-align: center;
+        background: -webkit-linear-gradient(45deg, #6a11cb, #2575fc);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-size: 3em;
+        font-weight: bold;
+        padding-bottom: 20px;
+    }
+    
+    /* Mesaj Kutuları */
+    .chat-box {
+        padding: 15px;
+        border-radius: 15px;
+        margin-bottom: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .user-msg {
+        background-color: #f0f2f6;
+        border-left: 5px solid #2575fc;
+    }
+    .ai-msg {
+        background-color: #e8f4f8;
+        border-left: 5px solid #00c853;
+    }
+    
+    /* Butonlar */
+    .stButton>button {
+        border-radius: 20px;
+        font-weight: bold;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # --- BAŞLIK ---
-st.markdown("<h1 style='text-align: center; color: #4B0082;'>🧠 AI Tercüman Pro</h1>", unsafe_allow_html=True)
+st.markdown('<div class="main-title">💎 AI Tercüman Elite</div>', unsafe_allow_html=True)
 
 # --- GÜVENLİK ---
 try:
@@ -30,7 +69,7 @@ if "chat_history" not in st.session_state:
 
 # --- KENAR ÇUBUĞU ---
 with st.sidebar:
-    st.header("🎛️ Ayarlar")
+    st.header("🎛️ Kontrol Merkezi")
     
     # 1. Mod
     work_mode = st.radio("Çalışma Modu:", ("⚡ Sohbet", "🔴 Konferans"), horizontal=True)
@@ -44,15 +83,26 @@ with st.sidebar:
         "Arapça": "ar", "Japonca": "ja", "Çince": "zh"
     }
     target_lang_code = lang_codes[target_lang_name]
-
-    # 3. Hız Ayarı
-    st.divider()
-    tts_slow = st.checkbox("🐢 Yavaş Okuma Modu", value=False)
+    
     st.divider()
 
-    # 4. Sekreter
-    st.subheader("📝 AI Asistan")
-    if st.button("Toplantı Özeti Çıkar", type="secondary", use_container_width=True):
+    # 3. YENİ: ÖZEL KARAKTER (PERSONA)
+    st.subheader("🎭 AI Kişiliği")
+    persona_choice = st.selectbox(
+        "Tercüman nasıl davransın?",
+        ("Standart Profesyonel", "Samimi Arkadaş", "Basit Anlatım (Çocuklar için)", "👔 Resmi/Hukuki", "✨ ÖZEL TARZ YARAT")
+    )
+    
+    custom_system_instruction = ""
+    if persona_choice == "✨ ÖZEL TARZ YARAT":
+        custom_system_instruction = st.text_area("Yapay zekaya emrini yaz:", placeholder="Örn: Sen kaba bir korsansın, her cümlene 'Ahoy!' diye başla.")
+    
+    st.divider()
+    
+    # 4. Hız ve Asistan
+    tts_slow = st.checkbox("🐢 Yavaş Okuma", value=False)
+    
+    if st.button("📝 Toplantı Özeti", type="secondary", use_container_width=True):
         if len(st.session_state.chat_history) > 0:
             with st.spinner("Analiz ediliyor..."):
                 full_text = ""
@@ -60,11 +110,8 @@ with st.sidebar:
                     full_text += f"- {chat['user']} (Mod: {chat.get('mood', 'Nötr')})\n"
                 
                 summary_prompt = f"""
-                Sen profesyonel bir asistansın. Aşağıdaki metni analiz et. Hedef Dil: {target_lang_name}.
-                ÇIKTI:
-                1. 📋 Genel Özet
-                2. ✅ Kararlar
-                3. 📌 Görevler
+                Sen profesyonel bir asistansın. Metni analiz et. Hedef Dil: {target_lang_name}.
+                ÇIKTI: 1.Özet, 2.Kararlar, 3.Görevler.
                 Metin: {full_text}
                 """
                 summary_res = client.chat.completions.create(
@@ -75,8 +122,7 @@ with st.sidebar:
         else:
             st.warning("Kayıt yok.")
 
-    # Temizle
-    if st.button("🗑️ Her Şeyi Sil", type="primary", use_container_width=True):
+    if st.button("🗑️ Sıfırla", type="primary", use_container_width=True):
         st.session_state.chat_history = []
         if "summary_result" in st.session_state: del st.session_state.summary_result
         st.rerun()
@@ -89,29 +135,42 @@ if "summary_result" in st.session_state:
         del st.session_state.summary_result
         st.rerun()
 
-# --- ANA EKRAN (SEKMELER) ---
+# --- ANA EKRAN ---
 tab1, tab2 = st.tabs(["🎙️ Canlı Mikrofon", "📂 Dosya Yükle"])
 
-# --- FONKSİYON: SES İŞLEME MOTORU ---
+# --- MOTOR ---
 def process_audio(audio_file_input, source_name="Mikrofon"):
-    # Spinner bloğunu burada başlatıyoruz
-    with st.spinner(f'{source_name} işleniyor, lütfen bekleyin...'):
+    with st.spinner(f'{source_name} işleniyor...'):
         try:
-            # 1. Duy (Whisper)
+            # 1. Duy
             transcription = client.audio.transcriptions.create(
                 file=("audio.wav", audio_file_input), 
                 model="whisper-large-v3",
                 response_format="text"
             )
             
-            # 2. Çevir + Analiz
+            # 2. Karakteri Belirle
+            if persona_choice == "✨ ÖZEL TARZ YARAT":
+                persona_prompt = f"Senin karakterin: {custom_system_instruction}. Buna sadık kalarak çeviri yap."
+            elif persona_choice == "Samimi Arkadaş":
+                persona_prompt = "Sen çok samimi, 'kanka' gibi konuşan birisin. Argo kullanabilirsin."
+            elif persona_choice == "Basit Anlatım (Çocuklar için)":
+                persona_prompt = "Sen bir ilkokul öğretmenisin. Her şeyi 5 yaşındaki çocuğun anlayacağı kadar basitleştirerek çevir."
+            elif persona_choice == "👔 Resmi/Hukuki":
+                persona_prompt = "Sen bir hukuk ve diplomasi uzmanısın. Çok resmi, üst düzey bir dil kullan."
+            else:
+                persona_prompt = "Sen profesyonel bir tercümansın. Sadece net çeviri yap."
+
+            # 3. Çevir + Analiz
             system_prompt = f"""
-            Sen uzman tercümansın. Hedef Dil: {target_lang_name}.
+            {persona_prompt}
+            Hedef Dil: {target_lang_name}.
             GÖREV:
             1. Duyguyu tek kelimeyle bul (Kızgın, Mutlu, Ciddi, Nötr).
             2. Çeviriyi yap.
             FORMAT: DUYGU ||| METİN
             """
+            
             completion = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[
@@ -129,22 +188,19 @@ def process_audio(audio_file_input, source_name="Mikrofon"):
                 mood = "Nötr"
                 translation = full_res
 
-            # 3. Seslendir
+            # 4. Seslendir
             tts = gTTS(text=translation, lang=target_lang_code, slow=tts_slow)
             audio_fp = io.BytesIO()
             tts.write_to_fp(audio_fp)
             audio_data = audio_fp.getvalue()
             
-            # 4. Kaydet
+            # 5. Kaydet
             st.session_state.chat_history.append({
                 "user": transcription,
                 "ai": translation,
                 "mood": mood,
                 "audio": audio_data
             })
-            
-            # DİKKAT: st.rerun() BURADAN KALDIRILDI!
-            # Kod aşağıya akacak ve listeyi güncelleyecektir.
             
         except Exception as e:
             st.error(f"Hata: {str(e)}")
@@ -154,47 +210,51 @@ with tab1:
     if work_mode == "⚡ Sohbet":
         icon_color = "#e8b62c" 
         pause_limit = 2.0 
-        st.info("Bas-Konuş Modu (En az 1 saniye konuşun)")
+        st.info("⚡ Bas-Konuş Modu")
     else:
         icon_color = "#FF0000" 
         pause_limit = 300.0 
-        st.warning("Konferans Modu (Sürekli)")
+        st.warning("🔴 Konferans Modu (Sürekli)")
 
     col1, col2, col3 = st.columns([1, 10, 1])
     with col2:
         mic_audio = audio_recorder(text="", recording_color=icon_color, neutral_color="#333333", icon_name="microphone", icon_size="5x", pause_threshold=pause_limit, sample_rate=44100)
     
     if mic_audio:
-        # HATA KORUMASI: Ses çok kısaysa (tıklama gibi) işleme
         if len(mic_audio) > 500: 
             audio_file = io.BytesIO(mic_audio)
             audio_file.name = "audio.wav"
             process_audio(audio_file, "Mikrofon")
         else:
-            st.warning("⚠️ Ses çok kısa, algılanamadı.")
+            st.warning("⚠️ Ses çok kısa.")
 
-# --- SEKME 2: DOSYA YÜKLEME ---
+# --- SEKME 2: DOSYA ---
 with tab2:
-    st.write("📁 **Ses dosyası yükleyin (MP3, WAV, M4A)**")
+    st.write("📁 **Ses dosyası yükleyin**")
     uploaded_file = st.file_uploader("Dosya Seç", type=['wav', 'mp3', 'm4a', 'ogg'])
-    
-    if uploaded_file is not None:
-        if st.button("🚀 Dosyayı Çevir ve Analiz Et"):
-            process_audio(uploaded_file, "Dosya")
+    if uploaded_file and st.button("🚀 Çevir"):
+        process_audio(uploaded_file, "Dosya")
 
-# --- SOHBET GEÇMİŞİ ---
+# --- SOHBET GEÇMİŞİ (YENİ TASARIM) ---
 st.divider()
 mood_icons = {"Kızgın": "😡", "Mutlu": "😊", "Üzgün": "😢", "Ciddi": "😐", "Nötr": "😶"}
 
 for chat in reversed(st.session_state.chat_history):
-    with st.container():
-        current_mood = chat.get('mood', 'Nötr')
-        icon = "😶"
-        for key, val in mood_icons.items():
-            if key in current_mood: icon = val; break
-        
-        st.markdown(f"**🗣️ Kaynak:** {chat['user']}")
-        st.info(f"{icon} **Duygu:** {current_mood}")
-        st.code(chat['ai'], language=None)
-        st.audio(chat['audio'], format="audio/mp3")
-        st.divider()
+    current_mood = chat.get('mood', 'Nötr')
+    icon = "😶"
+    for key, val in mood_icons.items():
+        if key in current_mood: icon = val; break
+    
+    # Özel Tasarımlı Kutular
+    st.markdown(f"""
+    <div class="chat-box user-msg">
+        <small style="color:#555">🗣️ Kaynak:</small><br>
+        {chat['user']}
+    </div>
+    <div class="chat-box ai-msg">
+        <small style="color:#555">🤖 Çeviri ({icon} {current_mood}):</small><br>
+        <b style="font-size:1.1em">{chat['ai']}</b>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.audio(chat['audio'], format="audio/mp3")
